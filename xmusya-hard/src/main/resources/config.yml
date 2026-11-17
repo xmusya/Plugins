@@ -1,0 +1,310 @@
+# ============================================================
+#  xmusya-hard — конфигурация
+#  Читается при старте сервера и по команде /xmh reload.
+#
+#  Порядок фаз фиксирован (сверху вниз):
+#    wood -> stone -> iron -> diamond -> nether ->
+#    golden_food -> villagers -> beacons -> netherite -> endgame
+#
+#  У каждой фазы есть:
+#    day                    — день, с которого она начинается
+#    border                 — размер барьера при переходе на фазу через /xmh phase
+#    name / short-name      — названия в чате и боссбаре
+#    limited-crafting       — геймрул limited_crafting в этой фазе
+#    natural-regeneration   — геймрул natural_health_regeneration в этой фазе
+#    trade                  — разрешена ли торговля с жителями
+#    dimensions             — разрешённые измерения: overworld / nether / end
+#    forbidden-armor        — броня, которую НЕЛЬЗЯ носить (выбрасывается)
+#                             ключи: iron, golden, diamond, netherite, elytra
+#                             или точный id предмета: minecraft:turtle_helmet
+#    forbidden-tools        — инструменты/оружие, за которые даётся
+#                             mining_fatigue + weakness
+#                             ключи: stone, iron, golden, diamond, netherite
+#                             или точный id: minecraft:trident
+#    forbidden-items        — предметы, которые выбрасываются из инвентаря
+#    recipes                — рецепты, ОТКРЫВАЮЩИЕСЯ на этой фазе
+#                             (дальше они остаются открытыми навсегда)
+# ============================================================
+
+border:
+  start: 650
+  mid1: 1250
+  mid2: 2500
+  daily: 100
+  max: 15000
+
+bloodmoon:
+  # каждая N-я ночь (день % N == 0) — Кровавая луна
+  interval: 10
+  # Усиление мобов ночью (amplifier: 0 = Сила I / Скорость I,
+  # 1 = II, -1 = не выдавать совсем).
+  mob-strength: 0
+  mob-speed: 0
+
+# Стартовые Спешка I + Скорость I выдаются до этого дня включительно.
+starter-buffs-until-day: 4
+
+phases:
+
+  wood:
+    day: 0
+    border: 650
+    name: "Деревянный старт"
+    short-name: "Дерево"
+    limited-crafting: true
+    natural-regeneration: true
+    trade: false
+    dimensions: [overworld]
+    forbidden-armor: [iron, golden, diamond, netherite, elytra]
+    forbidden-tools: [stone, iron, golden, diamond, netherite]
+    forbidden-items: [golden_apple, enchanted_golden_apple, golden_carrot, beacon, totem_of_undying]
+    recipes: []
+
+  stone:
+    day: 1
+    border: 650
+    name: "Каменный век"
+    short-name: "Камень"
+    limited-crafting: true
+    natural-regeneration: true
+    trade: false
+    dimensions: [overworld]
+    forbidden-armor: [iron, golden, diamond, netherite, elytra]
+    forbidden-tools: [iron, golden, diamond, netherite]
+    forbidden-items: [golden_apple, enchanted_golden_apple, golden_carrot, beacon, totem_of_undying]
+    recipes:
+      - arrow
+      - bow
+      - chiseled_stone_bricks
+      - cobblestone_slab
+      - cobblestone_stairs
+      - cobblestone_wall
+      - leather_horse_armor
+      - shield
+      - smooth_stone
+      - stone_axe
+      - stone_brick_slab
+      - stone_brick_stairs
+      - stone_brick_wall
+      - stone_bricks
+      - stone_button
+      - stone_hoe
+      - stone_pickaxe
+      - stone_pressure_plate
+      - stone_shovel
+      - stone_sword
+
+  iron:
+    day: 5
+    border: 650
+    name: "Эпоха металлов"
+    short-name: "Железо"
+    limited-crafting: true
+    natural-regeneration: true
+    trade: false
+    dimensions: [overworld]
+    forbidden-armor: [diamond, netherite, elytra]
+    forbidden-tools: [diamond, netherite]
+    forbidden-items: [golden_apple, enchanted_golden_apple, golden_carrot, beacon, totem_of_undying]
+    recipes:
+      - blast_furnace
+      - bucket
+      - dispenser
+      - dropper
+      - flint_and_steel
+      - gold_ingot_from_blasting_deepslate_gold_ore
+      - gold_ingot_from_blasting_gold_ore
+      - gold_ingot_from_blasting_nether_gold_ore
+      - gold_ingot_from_blasting_raw_gold
+      - gold_ingot_from_gold_block
+      - gold_ingot_from_nuggets
+      - gold_ingot_from_smelting_deepslate_gold_ore
+      - gold_ingot_from_smelting_gold_ore
+      - gold_ingot_from_smelting_nether_gold_ore
+      - gold_ingot_from_smelting_raw_gold
+      - gold_nugget
+      - golden_axe
+      - golden_boots
+      - golden_chestplate
+      - golden_helmet
+      - golden_hoe
+      - golden_leggings
+      - golden_pickaxe
+      - golden_shovel
+      - golden_sword
+      - hopper
+      - iron_axe
+      - iron_bars
+      - iron_boots
+      - iron_chestplate
+      - iron_helmet
+      - iron_hoe
+      - iron_ingot_from_blasting_deepslate_iron_ore
+      - iron_ingot_from_blasting_iron_ore
+      - iron_ingot_from_blasting_raw_iron
+      - iron_ingot_from_iron_block
+      - iron_ingot_from_nuggets
+      - iron_ingot_from_smelting_deepslate_iron_ore
+      - iron_ingot_from_smelting_iron_ore
+      - iron_ingot_from_smelting_raw_iron
+      - iron_leggings
+      - iron_nugget
+      - iron_pickaxe
+      - iron_shovel
+      - iron_sword
+      - piston
+      - redstone
+      - shears
+      - smithing_table
+      - smoker
+      - stonecutter
+
+  diamond:
+    day: 10
+    border: 650
+    name: "Алмазная эра"
+    short-name: "Алмаз"
+    limited-crafting: true
+    natural-regeneration: true
+    trade: false
+    dimensions: [overworld]
+    forbidden-armor: [netherite, elytra]
+    forbidden-tools: [netherite]
+    forbidden-items: [golden_apple, enchanted_golden_apple, golden_carrot, beacon, totem_of_undying]
+    recipes:
+      - diamond_axe
+      - diamond_boots
+      - diamond_chestplate
+      - diamond_helmet
+      - diamond_hoe
+      - diamond_leggings
+      - diamond_pickaxe
+      - diamond_shovel
+      - diamond_sword
+      - enchanting_table
+
+  nether:
+    day: 25
+    border: 2500
+    name: "Врата Незера"
+    short-name: "Незер"
+    limited-crafting: true
+    natural-regeneration: true
+    trade: false
+    dimensions: [overworld, nether]
+    forbidden-armor: [netherite, elytra]
+    forbidden-tools: [netherite]
+    forbidden-items: [golden_apple, enchanted_golden_apple, golden_carrot, beacon, totem_of_undying]
+    recipes:
+      - brewing_stand
+      - cauldron
+      - glowstone
+      - nether_brick
+      - nether_brick_fence
+      - nether_brick_slab
+      - nether_brick_slab_from_nether_bricks_stonecutting
+      - nether_brick_stairs
+      - nether_brick_stairs_from_nether_bricks_stonecutting
+      - nether_brick_wall
+      - nether_brick_wall_from_nether_bricks_stonecutting
+      - nether_bricks
+      - respawn_anchor
+
+  golden_food:
+    day: 30
+    border: 2500
+    name: "Золотой пир"
+    short-name: "Золотая еда"
+    limited-crafting: true
+    natural-regeneration: true
+    trade: false
+    dimensions: [overworld, nether]
+    forbidden-armor: [netherite, elytra]
+    forbidden-tools: [netherite]
+    forbidden-items: [beacon, totem_of_undying]
+    recipes:
+      - glistering_melon_slice
+      - golden_apple
+      - golden_carrot
+
+  villagers:
+    day: 40
+    border: 3500
+    name: "Открытие торговли"
+    short-name: "Жители"
+    limited-crafting: true
+    natural-regeneration: true
+    trade: true
+    dimensions: [overworld, nether]
+    forbidden-armor: [netherite, elytra]
+    forbidden-tools: [netherite]
+    forbidden-items: [beacon, totem_of_undying]
+    recipes:
+      - anvil
+      - grindstone
+
+  beacons:
+    day: 45
+    border: 4000
+    name: "Эпоха Маяков"
+    short-name: "Маяки"
+    limited-crafting: true
+    natural-regeneration: true
+    trade: true
+    dimensions: [overworld, nether]
+    forbidden-armor: [netherite, elytra]
+    forbidden-tools: [netherite]
+    forbidden-items: [totem_of_undying]
+    recipes:
+      - beacon
+
+  netherite:
+    day: 50
+    border: 4500
+    name: "Незеритовый финал"
+    short-name: "Незерит"
+    limited-crafting: false
+    natural-regeneration: true
+    trade: true
+    dimensions: [overworld, nether]
+    forbidden-armor: [elytra]
+    forbidden-tools: []
+    forbidden-items: [totem_of_undying]
+    recipes:
+      - lodestone
+      - netherite_axe_smithing
+      - netherite_block
+      - netherite_boots_smithing
+      - netherite_chestplate_smithing
+      - netherite_helmet_smithing
+      - netherite_hoe_smithing
+      - netherite_horse_armor_smithing
+      - netherite_ingot
+      - netherite_ingot_from_netherite_block
+      - netherite_leggings_smithing
+      - netherite_nautilus_armor_smithing
+      - netherite_pickaxe_smithing
+      - netherite_scrap
+      - netherite_scrap_from_blasting
+      - netherite_shovel_smithing
+      - netherite_spear_smithing
+      - netherite_sword_smithing
+      - netherite_upgrade_smithing_template
+
+  endgame:
+    day: 60
+    border: 5500
+    name: "Свободная игра (ультра-хардкор)"
+    short-name: "Финал"
+    limited-crafting: false
+    natural-regeneration: false
+    trade: true
+    dimensions: [overworld, nether, end]
+    forbidden-armor: []
+    forbidden-tools: []
+    forbidden-items: []
+    recipes:
+      - firework_rocket
+      - firework_rocket_simple
+      - firework_star
+      - firework_star_fade
