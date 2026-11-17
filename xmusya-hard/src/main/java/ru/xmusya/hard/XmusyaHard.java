@@ -125,13 +125,8 @@ public final class XmusyaHard extends JavaPlugin implements Listener {
             getCommand("xmh").setExecutor(this);
         }
 
-        // Центр и размер барьера приводим в порядок при старте
-        World ow = overworld();
-        if (ow != null) {
-            WorldBorder wb = ow.getWorldBorder();
-            wb.setCenter(0.0, 0.0);
-            wb.setSize(borderSize);
-        }
+        // Центр и размер барьера приводим в порядок при старте (во всех мирах)
+        applyBorder(borderSize, 0L);
         applyRules();
 
         // 1 тик: счётчик дней и авто-пауза
@@ -404,19 +399,35 @@ public final class XmusyaHard extends JavaPlugin implements Listener {
         Bukkit.dispatchCommand(Bukkit.getConsoleSender(), command);
     }
 
+    /**
+     * Геймрулы в Java свои у каждого мира (оверворлд/незер/энд), поэтому
+     * команда выполняется через "execute in <измерение>" для всех миров.
+     */
     public void gamerule(String rule, Object value) {
         String want = String.valueOf(value);
-        World w = overworld();
-        if (w != null) {
+        for (World w : Bukkit.getWorlds()) {
             String cur = w.getGameRuleValue("minecraft:" + rule);
             if (cur == null) {
                 cur = w.getGameRuleValue(rule);
             }
             if (want.equalsIgnoreCase(cur)) {
-                return;
+                continue;
+            }
+            console("execute in " + w.getKey() + " run gamerule minecraft:" + rule + " " + want);
+        }
+    }
+
+    /** Барьер — тоже у каждого мира свой: ставим везде. ticks>0 = плавно. */
+    public void applyBorder(double size, long ticks) {
+        for (World w : Bukkit.getWorlds()) {
+            WorldBorder wb = w.getWorldBorder();
+            wb.setCenter(0.0, 0.0);
+            if (ticks > 0) {
+                wb.setSize(size, ticks);
+            } else {
+                wb.setSize(size);
             }
         }
-        console("gamerule minecraft:" + rule + " " + want);
     }
 
     public int phaseForDay(int day) {
@@ -550,28 +561,20 @@ public final class XmusyaHard extends JavaPlugin implements Listener {
     }
 
     private void growBorder(int day) {
-        World w = overworld();
-        if (w == null) {
-            return;
-        }
-        WorldBorder wb = w.getWorldBorder();
         if (day == 11) {
             borderSize = borderMid1;
-            wb.setSize(borderMid1, 200L);
-            wb.setCenter(0.0, 0.0);
+            applyBorder(borderMid1, 200L);
             Msg.broadcast("Барьер расширяется до " + borderMid1 + " блоков.", NamedTextColor.AQUA);
         } else if (day == 21) {
             borderSize = borderMid2;
-            wb.setSize(borderMid2, 300L);
-            wb.setCenter(0.0, 0.0);
+            applyBorder(borderMid2, 300L);
             Msg.broadcast("Барьер расширяется до " + borderMid2 + " блоков.", NamedTextColor.AQUA);
         } else if (day >= 31) {
             if (borderSize >= borderMax) {
                 return;
             }
             borderSize = Math.min(borderMax, borderSize + borderDaily);
-            wb.setSize(borderSize, 100L);
-            wb.setCenter(0.0, 0.0);
+            applyBorder(borderSize, 100L);
             Msg.broadcast("Барьер вырос: " + (int) borderSize + " блоков.", NamedTextColor.AQUA);
         }
     }
@@ -633,11 +636,8 @@ public final class XmusyaHard extends JavaPlugin implements Listener {
         prevDay = day;
         phase = p;
         borderSize = target.border;
+        applyBorder(borderSize, 0L);
         World w = overworld();
-        if (w != null) {
-            w.getWorldBorder().setCenter(0.0, 0.0);
-            w.getWorldBorder().setSize(borderSize);
-        }
         lastDaytime = (int) (w == null ? 0 : w.getTime() % 24000L);
         applyRules();
         syncRecipesAll();
@@ -1206,15 +1206,14 @@ public final class XmusyaHard extends JavaPlugin implements Listener {
         bmForced = false;
         bmPaused = false;
         borderSize = borderStart;
-        World w = overworld();
-        if (w != null) {
+        for (World w : Bukkit.getWorlds()) {
             w.setTime(1000L);
             w.setStorm(false);
             w.setThundering(false);
-            w.getWorldBorder().setCenter(0.0, 0.0);
-            w.getWorldBorder().setSize(borderStart);
-            lastDaytime = 1000;
         }
+        applyBorder(borderStart, 0L);
+        World w = overworld();
+        lastDaytime = 1000;
         applyRules();
         syncRecipesAll();
         Msg.broadcast("Прогресс сброшен (день 0, фаза wood, барьер " + borderStart + ").",
