@@ -125,6 +125,10 @@ public final class XmusyaHard extends JavaPlugin implements Listener {
             getCommand("xmh").setExecutor(this);
         }
 
+        collectRecipeKeys();
+        getLogger().info("Рецептов на сервере: " + allRecipeKeys.size()
+                + " (firework_rocket: " + (recipeExists("firework_rocket") ? "есть" : "НЕТ") + ")");
+
         // Центр и размер барьера приводим в порядок при старте (во всех мирах)
         applyBorder(borderSize, 0L);
         applyRules();
@@ -448,12 +452,63 @@ public final class XmusyaHard extends JavaPlugin implements Listener {
         gamerule("natural_health_regeneration", c.naturalRegeneration);
     }
 
+    /** Все рецепты, реально существующие на сервере (ключи). */
+    private final java.util.Set<org.bukkit.NamespacedKey> allRecipeKeys = new java.util.HashSet<>();
+    private final java.util.Set<String> reportedUnknown = new java.util.HashSet<>();
+
+    private void collectRecipeKeys() {
+        allRecipeKeys.clear();
+        java.util.Iterator<org.bukkit.inventory.Recipe> it = Bukkit.recipeIterator();
+        while (it.hasNext()) {
+            org.bukkit.inventory.Recipe r = it.next();
+            if (r instanceof org.bukkit.Keyed k && k.getKey() != null) {
+                allRecipeKeys.add(k.getKey());
+            }
+        }
+    }
+
+    private boolean recipeExists(String id) {
+        if (!allRecipeKeys.isEmpty()
+                && allRecipeKeys.contains(org.bukkit.NamespacedKey.minecraft(id))) {
+            return true;
+        }
+        // рецепт может быть невидим в итераторе (спец-рецепты) — но существовать
+        return allRecipeKeys.isEmpty() || Bukkit.getRecipe(org.bukkit.NamespacedKey.minecraft(id)) != null;
+    }
+
+    /**
+     * Рецепты выдаются напрямую через API (Player#discoverRecipes), чтобы не
+     * спамить чат сообщениями "Unlocked/Took N recipe(s)" и не зависеть от
+     * парсинга команд. Несуществующие рецепты пропускаются.
+     */
     public void syncRecipes(Player p) {
-        console("recipe give " + p.getName() + " *");
+        if (!allRecipeKeys.isEmpty()) {
+            p.discoverRecipes(allRecipeKeys);
+        } else {
+            console("recipe give " + p.getName() + " *");
+        }
+
+        java.util.List<org.bukkit.NamespacedKey> take = new java.util.ArrayList<>();
         for (int f = phase + 1; f < phases.size(); f++) {
             for (String r : phases.get(f).recipes) {
-                console("recipe take " + p.getName() + " minecraft:" + r);
+                if (!recipeExists(r)) {
+                    if (reportedUnknown.add(r)) {
+                        getLogger().info("Рецепта minecraft:" + r
+                                + " нет на этом сервере — пропускаю (не ошибка конфига).");
+                    }
+                    continue;
+                }
+                take.add(org.bukkit.NamespacedKey.minecraft(r));
             }
+        }
+        if (!take.isEmpty()) {
+            p.undiscoverRecipes(take);
+        }
+    }
+
+    private void syncRecipesAll() {
+        for (Player p : players()) {
+            syncRecipes(p);
         }
     }
 
@@ -487,12 +542,6 @@ public final class XmusyaHard extends JavaPlugin implements Listener {
             }
         }
         return dayEndgame;
-    }
-
-    private void syncRecipesAll() {
-        for (Player p : players()) {
-            syncRecipes(p);
-        }
     }
 
     // ------------------------------------------------------------------ время и дни

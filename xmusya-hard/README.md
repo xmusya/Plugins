@@ -3,13 +3,13 @@
 Хардкор с прогрессией по игровым дням — плагин-порт одноимённого датапака.
 Paper/Leaf **Minecraft 26.3** (Java 21+).
 
-Готовый файл: [`BuiltPlugins/xmusya-hard-1.0.1.jar`](BuiltPlugins/xmusya-hard-1.0.0.jar)
+Готовый файл: [`BuiltPlugins/xmusya-hard-1.0.2.jar`](BuiltPlugins/xmusya-hard-1.0.0.jar)
 
 ## Установка
 
 1. Удалить/выключить старый датапак `<мир>/datapacks/xmusya-hard 26.3.zip`
    (иначе пак и плагин будут дублировать эффекты и мешать друг другу).
-2. Скопировать `xmusya-hard-1.0.1.jar` в `<сервер>/plugins/`.
+2. Скопировать `xmusya-hard-1.0.2.jar` в `<сервер>/plugins/`.
 3. Полностью перезапустить сервер (не `/reload`).
 4. Исключить бота из всех проверок: `/tag <ник_бота> add bot`.
 5. Открыть меню: `/xmh`.
@@ -79,7 +79,9 @@ starter-buffs-until-day: 4   # Спешка I + Скорость I до этог
 - 10 фаз (по умолчанию): wood(0), stone(1), iron(5), diamond(10), nether(25),
   golden_food(30), villagers(40), beacons(45), netherite(50), endgame(60).
 - Барьер: 650 → 1250 (день 11) → 2500 (день 21) → +100/день с 31-го (до 15000).
-- Рецепты: `limited_crafting` по конфигу, поэтапная выдача/снятие.
+- Рецепты: `limited_crafting` по конфигу, поэтапная выдача/снятие через Bukkit API
+  (`Player#discoverRecipes` / `undiscoverRecipes`) — без спама в чат и без
+  `Unknown recipe`. Рецепты, которых нет на сервере, пропускаются с записью в лог.
 - Запреты по конфигу: броня/элитра/инструменты, золотая еда, маяки, тотемы,
   измерения, торговля с жителями. Вещи выбрасываются на землю с сохранением
   чар; за инструменты — `mining_fatigue` + `weakness`.
@@ -105,7 +107,7 @@ TC=/path/to/toolchain ./build.sh
 ```
 
 Ожидает `$TC/jdk-25*/bin/javac` и `$TC/lib/*.jar` (см. корневой README).
-Результат — `BuiltPlugins/xmusya-hard-1.0.1.jar`.
+Результат — `BuiltPlugins/xmusya-hard-1.0.2.jar`.
 
 ## Исходники
 
