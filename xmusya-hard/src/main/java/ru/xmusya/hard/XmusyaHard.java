@@ -77,7 +77,7 @@ public final class XmusyaHard extends JavaPlugin implements Listener {
     public int borderMid1 = 1250;
     public int borderMid2 = 2500;
     public int borderDaily = 100;
-    public int borderMax = 15000;
+    public int borderMax = 100000;
     public int bmInterval = 10;
     /** Усиление мобов в Кровавую луну (amplifier; -1 = не выдавать). */
     public int bmMobStrength = 0;
@@ -220,7 +220,7 @@ public final class XmusyaHard extends JavaPlugin implements Listener {
         borderMid1 = getConfig().getInt("border.mid1", 1250);
         borderMid2 = getConfig().getInt("border.mid2", 2500);
         borderDaily = getConfig().getInt("border.daily", 100);
-        borderMax = getConfig().getInt("border.max", 15000);
+        borderMax = getConfig().getInt("border.max", 100000);
         bmInterval = getConfig().getInt("bloodmoon.interval", 10);
         bmMobStrength = getConfig().getInt("bloodmoon.mob-strength", 0);
         bmMobSpeed = getConfig().getInt("bloodmoon.mob-speed", 0);
@@ -259,6 +259,7 @@ public final class XmusyaHard extends JavaPlugin implements Listener {
                                    org.bukkit.configuration.ConfigurationSection s) {
         c.day = s.getInt("day", c.day);
         c.border = s.getInt("border", c.border);
+        c.dailyBorder = s.getInt("daily-border", c.dailyBorder);
         c.name = s.getString("name", c.name);
         c.shortName = s.getString("short-name", c.shortName);
         c.limitedCrafting = s.getBoolean("limited-crafting", c.limitedCrafting);
@@ -676,6 +677,12 @@ public final class XmusyaHard extends JavaPlugin implements Listener {
         }
     }
 
+    /** Прирост барьера в день на текущей фазе. */
+    private int dailyBorderNow() {
+        PhaseCfg c = cfg();
+        return c != null && c.dailyBorder > 0 ? c.dailyBorder : borderDaily;
+    }
+
     private void growBorder(int day) {
         if (day == 11) {
             borderSize = borderMid1;
@@ -689,7 +696,8 @@ public final class XmusyaHard extends JavaPlugin implements Listener {
             if (borderSize >= borderMax) {
                 return;
             }
-            borderSize = Math.min(borderMax, borderSize + borderDaily);
+            int add = dailyBorderNow();
+            borderSize = Math.min(borderMax, borderSize + add);
             applyBorder(borderSize, 100L);
             Msg.broadcast("Барьер вырос: " + (int) borderSize + " блоков.", NamedTextColor.AQUA);
         }
@@ -708,6 +716,14 @@ public final class XmusyaHard extends JavaPlugin implements Listener {
     }
 
     public void onPhaseEnter(int p) {
+        // Барьер фазы применяем при переходе (расширяем, если он больше текущего)
+        PhaseCfg pc = cfg();
+        if (pc != null && pc.border > borderSize) {
+            borderSize = pc.border;
+            applyBorder(borderSize, 200L);
+            Msg.broadcast("Барьер расширен до " + (int) borderSize + " блоков (новая фаза).",
+                    NamedTextColor.AQUA);
+        }
         applyRules();
         syncRecipesAll();
         announcePhase(p);

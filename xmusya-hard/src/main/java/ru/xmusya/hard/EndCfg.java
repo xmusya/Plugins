@@ -25,7 +25,7 @@ public final class EndCfg {
 
     // --- крепость
     /** Включена ли механика «одна крепость + ломаные порталы в остальных». */
-    public boolean strongholdEnabled = false;
+    public boolean strongholdEnabled = true;
     public int minRadius = 5000;
     public int maxRadius = 8000;
     /** Радиус поиска комнаты портала вокруг найденной крепости (в чанках). */
@@ -36,7 +36,7 @@ public final class EndCfg {
     /** На время первого поиска крепости барьер временно расширяется до этого размера. */
     public int searchBorderSize = 50000;
     /** Ломать порталы во всех остальных крепостях (только при stronghold.enabled). */
-    public boolean disableOtherPortals = false;
+    public boolean disableOtherPortals = true;
 
     // --- ока
     public double eyeBreakChance = 0.20;

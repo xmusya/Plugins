@@ -80,6 +80,8 @@ public final class EndManager implements Listener {
     private boolean locating = false;
     private final List<int[]> scanQueue = new ArrayList<>();
     private boolean scanScheduled = false;
+    /** Предупреждение «рамки не найдены» пишем в лог только один раз. */
+    private boolean scanWarned = false;
 
     public EndManager(XmusyaHard plugin, EndCfg cfg, EndState state) {
         this.plugin = plugin;
@@ -89,8 +91,9 @@ public final class EndManager implements Listener {
 
     // ------------------------------------------------------------------ запуск
     public void start() {
-        // Поиск крепости — на главном потоке, через 2 секунды после старта
-        Bukkit.getScheduler().runTaskLater(plugin, this::ensureStronghold, 40L);
+        // Поиск крепости — через 5 секунд после старта (на это время
+        // барьер временно расширяется до search-border-size)
+        Bukkit.getScheduler().runTaskLater(plugin, this::ensureStronghold, 100L);
         // Обработка очереди чанков для поиска комнаты портала
         Bukkit.getScheduler().runTaskTimer(plugin, this::processScanQueue, 1L, 1L);
         // Спавнеры блейзов (кеш) + гасты
@@ -115,7 +118,7 @@ public final class EndManager implements Listener {
         // ограничен стартовыми 650 блоками). Потом возвращаем как было.
         Map<World, Double> savedBorders = new HashMap<>();
         boolean borderChanged = false;
-        if (cfg.searchBorderSize > 0 && cfg.strongholdEnabled) {
+        if (cfg.searchBorderSize > 0) {
             for (World w : Bukkit.getWorlds()) {
                 savedBorders.put(w, w.getWorldBorder().getSize());
                 w.getWorldBorder().setSize(cfg.searchBorderSize);
@@ -220,9 +223,12 @@ public final class EndManager implements Listener {
         if (scanQueue.isEmpty()) {
             if (scanScheduled) {
                 scanScheduled = false;
-                if (state.frames.isEmpty()) {
+                if (state.frames.isEmpty() && !scanWarned) {
+                    scanWarned = true;
                     plugin.getLogger().warning("Рамки портала не найдены рядом с крепостью — "
-                            + "попробуйте /xmh end scan.");
+                            + "попробуйте /xmh end scan (повтор предупреждения отключён).");
+                } else if (!state.frames.isEmpty()) {
+                    scanWarned = false;
                 }
             }
             return;

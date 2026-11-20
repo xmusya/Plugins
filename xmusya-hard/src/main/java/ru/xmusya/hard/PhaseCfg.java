@@ -24,6 +24,8 @@ public final class PhaseCfg {
     public int day = 0;
     /** Размер барьера, выставляемый при ручном переходе на эту фазу. */
     public int border = 650;
+    /** Прирост барьера каждый день на этой фазе (0 = общий border.daily). */
+    public int dailyBorder = 0;
 
     /** Геймрул limited_crafting на этой фазе. */
     public boolean limitedCrafting = true;
@@ -53,7 +55,8 @@ public final class PhaseCfg {
     public static List<PhaseCfg> defaults() {
         List<PhaseCfg> out = new ArrayList<>();
         int[] days = {0, 1, 5, 10, 25, 30, 40, 45, 50, 60};
-        int[] borders = {650, 650, 650, 650, 2500, 2500, 3500, 4000, 4500, 5500};
+        // Последняя фаза: 50000 (это 25 000 «полных» блоков, worldborder = 0.5 блока)
+        int[] borders = {650, 650, 650, 650, 2500, 2500, 3500, 4000, 4500, 50000};
 
         for (int i = 0; i < Phases.COUNT; i++) {
             PhaseCfg c = new PhaseCfg(Phases.KEYS[i]);
@@ -61,6 +64,9 @@ public final class PhaseCfg {
             c.shortName = Phases.SHORT[i];
             c.day = days[i];
             c.border = borders[i];
+            if (i == Phases.COUNT - 1) {
+                c.dailyBorder = 1500; // +1500 каждый день на последней фазе
+            }
             c.limitedCrafting = days[i] < 50;
             c.naturalRegeneration = days[i] < 60;
             c.trade = i >= 6;
