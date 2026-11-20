@@ -74,10 +74,16 @@ public final class Menu {
         p.sendMessage(btn("Показать/Скрыть BossBar", NamedTextColor.AQUA,
                 "/xmh bar", "Личный переключатель BossBar"));
 
+        boolean isAdmin = p.hasPermission("xmusyahard.admin") || p.isOp();
         if (plugin.endState != null) {
-            String stronghold = plugin.endState.strongholdChosen
-                    ? plugin.endState.strongholdX + ", " + plugin.endState.strongholdZ
-                    : "не найдена";
+            String stronghold;
+            if (!plugin.endState.strongholdChosen) {
+                stronghold = "ещё не найдена";
+            } else if (isAdmin) {
+                stronghold = plugin.endState.strongholdX + ", " + plugin.endState.strongholdZ;
+            } else {
+                stronghold = "найдена";
+            }
             p.sendMessage(Component.text("Энд: ", NamedTextColor.GRAY)
                     .append(Component.text("рамки " + plugin.endState.filledCount() + "/"
                             + plugin.endState.frames.size(), NamedTextColor.LIGHT_PURPLE))
@@ -85,8 +91,7 @@ public final class Menu {
                     .append(Component.text(stronghold, NamedTextColor.AQUA)));
         }
 
-        boolean admin = p.hasPermission("xmusyahard.admin") || p.isOp();
-        if (!admin) {
+        if (!isAdmin) {
             return;
         }
 
