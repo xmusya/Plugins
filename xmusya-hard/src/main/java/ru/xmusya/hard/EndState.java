@@ -45,6 +45,9 @@ public final class EndState {
     }
 
     /** Выбранная крепость (её портал — единственный рабочий). */
+    /** UID мира, к которому относится состояние (для определения вайпа). */
+    public String worldUid = "";
+
     public String strongholdWorld = "";
     public int strongholdX, strongholdY, strongholdZ;
     public boolean strongholdChosen = false;
@@ -80,6 +83,14 @@ public final class EndState {
             return;
         }
         YamlConfiguration y = YamlConfiguration.loadConfiguration(file);
+
+        String storedUid = y.getString("world-uid", "");
+        String currentUid = worldUidNow();
+        if (!storedUid.isEmpty() && !currentUid.isEmpty() && !storedUid.equals(currentUid)) {
+            Bukkit.getLogger().info("[xmusya-hard] Мир пересоздан — состояние Энда сброшено.");
+            resetAll();
+            return;
+        }
 
         strongholdWorld = y.getString("stronghold.world", "");
         strongholdX = y.getInt("stronghold.x");
@@ -184,6 +195,7 @@ public final class EndState {
             return;
         }
         YamlConfiguration y = new YamlConfiguration();
+        y.set("world-uid", worldUidNow());
         y.set("stronghold.world", strongholdWorld);
         y.set("stronghold.x", strongholdX);
         y.set("stronghold.y", strongholdY);
@@ -236,6 +248,33 @@ public final class EndState {
         } catch (IOException ex) {
             Bukkit.getLogger().warning("[xmusya-hard] не удалось сохранить end-state.yml: " + ex.getMessage());
         }
+    }
+
+    /** Полный сброс (вайп мира или /xmh reset). */
+    public void resetAll() {
+        strongholdWorld = "";
+        strongholdX = strongholdY = strongholdZ = 0;
+        strongholdChosen = false;
+        frames.clear();
+        disabledChunks.clear();
+        lastCycleDay = -1;
+        buffs.clear();
+        bonusHearts.clear();
+        awardedHearts.clear();
+        eggKeeper = null;
+        cursedUntil.clear();
+        endBannedUntil.clear();
+        save();
+    }
+
+    /** UID оверворлда (меняется при пересоздании мира). */
+    private static String worldUidNow() {
+        for (World w : Bukkit.getWorlds()) {
+            if (w.getEnvironment() == World.Environment.NORMAL) {
+                return w.getUID().toString();
+            }
+        }
+        return "";
     }
 
     private static List<String> pairs(Map<UUID, Long> m) {

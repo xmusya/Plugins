@@ -107,6 +107,8 @@ public final class XmusyaHard extends JavaPlugin implements Listener {
     public EndState endState;
     public EndManager endManager;
     public EndPortal endPortal;
+    /** true, если обнаружено пересоздание мира (сбрасываем прогресс). */
+    public boolean wipeDetected = false;
 
     private final Random rnd = new Random();
     private BossBar mainBar;
@@ -120,6 +122,23 @@ public final class XmusyaHard extends JavaPlugin implements Listener {
         saveDefaultConfig();
         loadConfig();
         loadState();
+        // Дополнительная проверка «мир сброшен»: состояние опережает мир
+        // (например, остался день 30 и фаза netherite, а мир только создан).
+        World ow0 = overworld();
+        if (!wipeDetected && ow0 != null) {
+            int worldDay = (int) (ow0.getFullTime() / 24000L);
+            if (currentDay > worldDay + 1) {
+                wipeDetected = true;
+                currentDay = worldDay;
+                prevDay = worldDay;
+                phase = 0;
+                bmActive = false;
+                bmForced = false;
+                bmPaused = false;
+                getLogger().info("Состояние опережало мир (день " + worldDay
+                        + ") — прогресс сброшен.");
+            }
+        }
 
         mainBar = BossBar.bossBar(Component.text("Xmusya Hard"), 0.0f,
                 BossBar.Color.RED, BossBar.Overlay.PROGRESS);
@@ -137,6 +156,9 @@ public final class XmusyaHard extends JavaPlugin implements Listener {
             endState = new EndState();
             endState.bind(getDataFolder());
             endState.load();
+            if (wipeDetected) {
+                endState.resetAll();
+            }
             endManager = new EndManager(this, endCfg, endState);
             endPortal = new EndPortal(this, endCfg, endState, endManager);
             getServer().getPluginManager().registerEvents(endManager, this);
@@ -341,6 +363,13 @@ public final class XmusyaHard extends JavaPlugin implements Listener {
         }
         org.bukkit.configuration.file.YamlConfiguration y =
                 org.bukkit.configuration.file.YamlConfiguration.loadConfiguration(f);
+        String storedUid = y.getString("world-uid", "");
+        String currentUid = stateWorldUid();
+        if (!storedUid.isEmpty() && !currentUid.isEmpty() && !storedUid.equals(currentUid)) {
+            wipeDetected = true;
+            getLogger().info("Мир пересоздан — прогресс xmusya-hard сброшен к дню 0 и фазе wood.");
+            return;
+        }
         totalTicks = y.getLong("total-ticks", 0L);
         currentDay = y.getInt("day", 0);
         prevDay = y.getInt("prev-day", currentDay);
@@ -372,6 +401,7 @@ public final class XmusyaHard extends JavaPlugin implements Listener {
     public void saveState() {
         org.bukkit.configuration.file.YamlConfiguration y =
                 new org.bukkit.configuration.file.YamlConfiguration();
+        y.set("world-uid", stateWorldUid());
         y.set("total-ticks", totalTicks);
         y.set("day", currentDay);
         y.set("prev-day", prevDay);
@@ -396,6 +426,12 @@ public final class XmusyaHard extends JavaPlugin implements Listener {
         } catch (IOException e) {
             getLogger().warning("Не удалось сохранить состояние: " + e.getMessage());
         }
+    }
+
+    /** UID оверворлда — меняется при пересоздании мира (детект вайпа). */
+    private String stateWorldUid() {
+        World w = overworld();
+        return w == null ? "" : w.getUID().toString();
     }
 
     // ------------------------------------------------------------------ утилиты
@@ -1284,7 +1320,10 @@ public final class XmusyaHard extends JavaPlugin implements Listener {
                 String act = args.length > 1 ? args[1].toLowerCase() : "status";
                 switch (act) {
                     case "locate" -> endManager.ensureStronghold();
-                    case "scan" -> endPortal.forceScan();
+                    case "scan" -> {
+                        endPortal.repair();
+                        endPortal.forceScan();
+                    }
                     case "reset" -> endPortal.resetPortal();
                     default -> {
                         Location l = endManager.strongholdLocation();
@@ -1332,6 +1371,16 @@ public final class XmusyaHard extends JavaPlugin implements Listener {
     }
 
     public void reset() {
+        // Сбрасываем энд-механики (рамки, глаза, баффы, сердца, проклятия)
+        if (endPortal != null) {
+            endPortal.resetAll();
+        }
+        // Снимаем все наложенные эффекты с игроков
+        for (Player p : players()) {
+            for (PotionEffect eff : new java.util.ArrayList<>(p.getActivePotionEffects())) {
+                p.removePotionEffect(eff.getType());
+            }
+        }
         totalTicks = 0L;
         currentDay = 0;
         prevDay = 0;

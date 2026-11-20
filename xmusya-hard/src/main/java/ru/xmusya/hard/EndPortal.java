@@ -193,6 +193,12 @@ public final class EndPortal implements Listener {
         }
     }
 
+    /** Чиним выбитые рамки (вызывается при /xmh end scan). */
+    public void repair() {
+        repairFrames();
+        refreshAllDisplays();
+    }
+
     public void refreshAllDisplays() {
         for (EndState.Frame f : state.frames.values()) {
             refreshDisplays(f);
@@ -219,16 +225,13 @@ public final class EndPortal implements Listener {
         if (!(b.getBlockData() instanceof EndPortalFrame data)) {
             return;
         }
-        if (state.frames.isEmpty()) {
-            forceScan();
-            Msg.action(p, "Портал ещё не просканирован — попробуйте через пару секунд.");
-            return;
-        }
         String key = EndState.keyOf(b);
         EndState.Frame f = state.frames.get(key);
         if (f == null) {
-            Msg.action(p, "Этот портал сломан — око не подходит.");
-            p.playSound(Msg.villagerNo());
+            // Рамку не знаем (ещё не просканировали или портал переехал) —
+            // запускаем скан ещё раз, чтобы не писать «портал сломан».
+            forceScan();
+            Msg.action(p, "Портал ещё не просканирован — попробуйте через пару секунд.");
             return;
         }
         if (data.hasEye() || f.filled) {
@@ -606,8 +609,8 @@ public final class EndPortal implements Listener {
             return;
         }
 
-        // TextDisplay: название + количество (или «активировано: ник»)
-        Location tl = base.clone().add(0.5, 0.95, 0.5);
+        // TextDisplay: только количество (или галочка у активированной рамки)
+        Location tl = base.clone().add(0.5, 0.9, 0.5);
         TextDisplay text = w.spawn(tl, TextDisplay.class, td -> {
             td.setBillboard(Display.Billboard.CENTER);
             td.setSeeThrough(false);
@@ -634,7 +637,7 @@ public final class EndPortal implements Listener {
                     d.getPersistentDataContainer().set(displayTypeKey, PersistentDataType.STRING, "item");
                     d.setTransformation(new Transformation(
                             new Vector3f(0f, 0f, 0f), new Quaternionf(),
-                            new Vector3f(0.55f, 0.55f, 0.55f), new Quaternionf()));
+                            new Vector3f(1.1f, 1.1f, 1.1f), new Quaternionf()));
                 });
                 itemId = item.getUniqueId();
             }
@@ -644,13 +647,9 @@ public final class EndPortal implements Listener {
 
     private Component textFor(EndState.Frame f) {
         if (f.filled) {
-            return Component.text("✔ активировано: " + f.contributor,
-                    NamedTextColor.GREEN, TextDecoration.BOLD);
+            return Component.text("✔", NamedTextColor.GREEN, TextDecoration.BOLD);
         }
-        return Component.text(f.itemName + " x" + f.amount, NamedTextColor.WHITE,
-                        TextDecoration.BOLD)
-                .append(Component.newline())
-                .append(Component.text("нажмите оком", NamedTextColor.GRAY));
+        return Component.text("×" + f.amount, NamedTextColor.WHITE, TextDecoration.BOLD);
     }
 
     private void tickDisplays() {
@@ -687,7 +686,7 @@ public final class EndPortal implements Listener {
                 Quaternionf q = facing(base.clone().add(0, 1.2, 0), nearest);
                 item.setTransformation(new Transformation(
                         new Vector3f(0f, offset, 0f), q,
-                        new Vector3f(0.55f, 0.55f, 0.55f), new Quaternionf()));
+                        new Vector3f(1.1f, 1.1f, 1.1f), new Quaternionf()));
                 item.setInterpolationDuration(3);
                 item.setInterpolationDelay(0);
             }
@@ -727,6 +726,64 @@ public final class EndPortal implements Listener {
             return;
         }
         manager.queueScan(l, cfg.scanRadiusChunks);
+    }
+
+    /** Полный сброс энд-механик (при /xmh reset или пересоздании мира). */
+    public void resetAll() {
+        // Убираем дисплеи
+        for (UUID[] ids : displays.values()) {
+            for (UUID id : ids) {
+                Entity e = id == null ? null : Bukkit.getEntity(id);
+                if (e != null) {
+                    e.remove();
+                }
+            }
+        }
+        displays.clear();
+        phases.clear();
+        // Чиним рамки, которые могли быть выбиты при подгрузке чанков
+        repairFrames();
+        // Гасим глаза в найденных рамках и убираем уже открытый портал
+        for (EndState.Frame f : new ArrayList<>(state.frames.values())) {
+            Location l = f.loc();
+            if (l == null) {
+                continue;
+            }
+            Block b = l.getBlock();
+            if (b.getType() == Material.END_PORTAL_FRAME
+                    && b.getBlockData() instanceof EndPortalFrame data) {
+                if (data.hasEye()) {
+                    data.setEye(false);
+                    b.setBlockData(data, false);
+                }
+            }
+        }
+        state.resetAll();
+        // Ищем крепость и рамки заново
+        manager.ensureStronghold();
+    }
+
+    /** Восстанавливает рамки, которых не хватает в мире (например, выбитых). */
+    private void repairFrames() {
+        for (EndState.Frame f : new ArrayList<>(state.frames.values())) {
+            Location l = f.loc();
+            if (l == null || !l.getChunk().isLoaded()) {
+                continue;
+            }
+            Block b = l.getBlock();
+            if (b.getType() == Material.END_PORTAL_FRAME) {
+                continue;
+            }
+            if (!b.isEmpty() && b.getType() != Material.END_PORTAL) {
+                continue;
+            }
+            b.setType(Material.END_PORTAL_FRAME, false);
+            if (b.getBlockData() instanceof EndPortalFrame data) {
+                data.setEye(false);
+                b.setBlockData(data, false);
+            }
+            plugin.getLogger().info("Рамка портала восстановлена: " + f.key());
+        }
     }
 
     public void resetPortal() {
