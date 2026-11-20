@@ -121,6 +121,12 @@ public final class XmusyaHard extends JavaPlugin implements Listener {
     public void onEnable() {
         I = this;
         saveDefaultConfig();
+        // Доливаем новые ключи в существующий config.yml (старые значения не трогаем)
+        int merged = ConfigMerge.merge(getDataFolder(), getResource("config.yml"));
+        if (merged > 0) {
+            getLogger().info("В config.yml добавлено новых параметров: " + merged
+                    + " (старые значения сохранены, копия — config.yml.bak).");
+        }
         loadConfig();
         loadState();
         // Дополнительная проверка «мир сброшен»: состояние опережает мир
