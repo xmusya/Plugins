@@ -607,7 +607,7 @@ public final class EndPortal implements Listener {
         }
 
         // TextDisplay: название + количество (или «активировано: ник»)
-        Location tl = base.clone().add(0.5, 1.15, 0.5);
+        Location tl = base.clone().add(0.5, 0.95, 0.5);
         TextDisplay text = w.spawn(tl, TextDisplay.class, td -> {
             td.setBillboard(Display.Billboard.CENTER);
             td.setSeeThrough(false);
@@ -624,7 +624,7 @@ public final class EndPortal implements Listener {
         if (!f.filled) {
             Material m = Material.matchMaterial(f.itemId);
             if (m != null) {
-                Location il = base.clone().add(0.5, 1.75, 0.5);
+                Location il = base.clone().add(0.5, 1.2, 0.5);
                 ItemDisplay item = w.spawn(il, ItemDisplay.class, d -> {
                     d.setItemStack(new ItemStack(m, 1));
                     d.setItemDisplayTransform(ItemDisplay.ItemDisplayTransform.GROUND);
@@ -684,7 +684,7 @@ public final class EndPortal implements Listener {
 
             Entity itemE = ids[0] == null ? null : Bukkit.getEntity(ids[0]);
             if (itemE instanceof ItemDisplay item) {
-                Quaternionf q = facing(base.clone().add(0, 1.75, 0), nearest);
+                Quaternionf q = facing(base.clone().add(0, 1.2, 0), nearest);
                 item.setTransformation(new Transformation(
                         new Vector3f(0f, offset, 0f), q,
                         new Vector3f(0.55f, 0.55f, 0.55f), new Quaternionf()));

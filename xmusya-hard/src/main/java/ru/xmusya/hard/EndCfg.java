@@ -31,6 +31,8 @@ public final class EndCfg {
     public int scanYMin = -64;
     public int scanYMax = 128;
     public int scanChunksPerTick = 8;
+    /** На время первого поиска крепости барьер временно расширяется до этого размера. */
+    public int searchBorderSize = 50000;
     /** Ломать порталы во всех остальных крепостях. */
     public boolean disableOtherPortals = true;
 
@@ -40,6 +42,10 @@ public final class EndCfg {
     public double eyeLightningDamage = 4.0;
     public double eyeLightningRadius = 4.0;
     public int eyeGlowSeconds = 10;
+    /** Звук при поломке ока (пусто = без звука). */
+    public String eyeBreakSound = "entity.lightning_bolt.thunder";
+    public float eyeBreakSoundVolume = 1.0f;
+    public float eyeBreakSoundPitch = 1.0f;
     public long eyeCooldownMs = 400L;
 
     // --- жемчуг
@@ -106,6 +112,7 @@ public final class EndCfg {
         e.scanYMin = s.getInt("stronghold.scan-y-min", e.scanYMin);
         e.scanYMax = s.getInt("stronghold.scan-y-max", e.scanYMax);
         e.scanChunksPerTick = Math.max(1, s.getInt("stronghold.scan-chunks-per-tick", e.scanChunksPerTick));
+        e.searchBorderSize = s.getInt("stronghold.search-border-size", e.searchBorderSize);
         e.disableOtherPortals = s.getBoolean("stronghold.disable-other-portals", e.disableOtherPortals);
 
         e.eyeBreakChance = s.getDouble("eyes.break-chance", e.eyeBreakChance);
@@ -113,6 +120,9 @@ public final class EndCfg {
         e.eyeLightningDamage = s.getDouble("eyes.lightning-damage", e.eyeLightningDamage);
         e.eyeLightningRadius = s.getDouble("eyes.lightning-radius", e.eyeLightningRadius);
         e.eyeGlowSeconds = s.getInt("eyes.glow-seconds", e.eyeGlowSeconds);
+        e.eyeBreakSound = s.getString("eyes.break-sound", e.eyeBreakSound);
+        e.eyeBreakSoundVolume = (float) s.getDouble("eyes.break-sound-volume", e.eyeBreakSoundVolume);
+        e.eyeBreakSoundPitch = (float) s.getDouble("eyes.break-sound-pitch", e.eyeBreakSoundPitch);
         e.eyeCooldownMs = s.getLong("eyes.cooldown-ms", e.eyeCooldownMs);
 
         e.pearlChance = s.getDouble("pearls.enderman-chance", e.pearlChance);

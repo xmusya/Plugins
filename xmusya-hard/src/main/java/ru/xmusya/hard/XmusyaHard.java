@@ -584,12 +584,16 @@ public final class XmusyaHard extends JavaPlugin implements Listener {
         if (delta > 24000) {
             delta = 0;
         }
-        if (!phasesPaused && !autoPaused) {
-            totalTicks += delta;
-        }
         lastDaytime = t;
 
-        currentDay = (int) (totalTicks / 24000L);
+        // Дни считаем по мировому времени (getFullTime), а не своим счётчиком:
+        // так учитываются сон, /time set, пропуски и т.п.
+        long full = w.getFullTime();
+        totalTicks = full;
+        currentDay = (int) (full / 24000L);
+        if (currentDay < prevDay) {
+            prevDay = currentDay;
+        }
         while (currentDay > prevDay) {
             prevDay++;
             onNewDay(prevDay);
@@ -706,7 +710,11 @@ public final class XmusyaHard extends JavaPlugin implements Listener {
         p = Math.max(0, Math.min(phases.size() - 1, p));
         PhaseCfg target = phases.get(p);
         int day = target.day;
-        totalTicks = (long) day * 24000L;
+        World ow = overworld();
+        if (ow != null) {
+            ow.setFullTime((long) day * 24000L + 1000L);
+        }
+        totalTicks = (long) day * 24000L + 1000L;
         currentDay = day;
         prevDay = day;
         phase = p;
@@ -806,9 +814,17 @@ public final class XmusyaHard extends JavaPlugin implements Listener {
                 if (loc == null) {
                     loc = p.getLocation().clone().add(rnd.nextInt(11) - 5, 1, rnd.nextInt(11) - 5);
                 }
-                EntityType type = rnd.nextInt(2) == 0 ? EntityType.VEX : EntityType.PHANTOM;
-                Entity e = p.getWorld().spawnEntity(loc, type);
-                e.addScoreboardTag("xh_scaled");
+                if (y < 40.0) {
+                    // в глубине — вексы
+                    Entity e = p.getWorld().spawnEntity(loc, EntityType.VEX);
+                    e.addScoreboardTag("xh_scaled");
+                } else {
+                    // высоко — фантомы на 10–15 блоков выше игрока
+                    Location spawnAt = p.getLocation().clone().add(
+                            rnd.nextInt(9) - 4, 10 + rnd.nextInt(6), rnd.nextInt(9) - 4);
+                    Entity e = p.getWorld().spawnEntity(spawnAt, EntityType.PHANTOM);
+                    e.addScoreboardTag("xh_scaled");
+                }
             }
         }
     }
@@ -1196,10 +1212,9 @@ public final class XmusyaHard extends JavaPlugin implements Listener {
 
         switch (sub) {
             case "skip" -> {
-                totalTicks += 24000L;
                 World w = overworld();
                 if (w != null) {
-                    w.setTime(w.getTime() + 24000L);
+                    w.setFullTime(w.getFullTime() + 24000L);
                     lastDaytime = (int) (w.getTime() % 24000L);
                 }
                 Msg.broadcast("День пропущен администратором.", NamedTextColor.GOLD);
@@ -1208,7 +1223,9 @@ public final class XmusyaHard extends JavaPlugin implements Listener {
             case "reset" -> reset();
             case "pause" -> {
                 phasesPaused = true;
-                Msg.broadcast("Фазы и счётчик дней поставлены на паузу.", NamedTextColor.GOLD);
+                gamerule("advance_time", false);
+                Msg.broadcast("Фазы и счётчик дней поставлены на паузу (время мира остановлено).",
+                        NamedTextColor.GOLD);
                 saveState();
             }
             case "resume" -> {
@@ -1327,7 +1344,7 @@ public final class XmusyaHard extends JavaPlugin implements Listener {
         bmPaused = false;
         borderSize = borderStart;
         for (World w : Bukkit.getWorlds()) {
-            w.setTime(1000L);
+            w.setFullTime(1000L);
             w.setStorm(false);
             w.setThundering(false);
         }

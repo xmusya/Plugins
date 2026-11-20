@@ -111,6 +111,17 @@ public final class EndManager implements Listener {
             return;
         }
         locating = true;
+        // Пока ищем — временно расширяем барьер (иначе кажется, что поиск
+        // ограничен стартовыми 650 блоками). Потом возвращаем как было.
+        Map<World, Double> savedBorders = new HashMap<>();
+        boolean borderChanged = false;
+        if (cfg.searchBorderSize > 0) {
+            for (World w : Bukkit.getWorlds()) {
+                savedBorders.put(w, w.getWorldBorder().getSize());
+                w.getWorldBorder().setSize(cfg.searchBorderSize);
+                borderChanged = true;
+            }
+        }
         Location spawn = ow.getSpawnLocation();
         Structure stronghold = Registry.STRUCTURE.get(NamespacedKey.minecraft("stronghold"));
         if (stronghold == null) {
@@ -151,6 +162,11 @@ public final class EndManager implements Listener {
         }
 
         locating = false;
+        if (borderChanged) {
+            for (Map.Entry<World, Double> en : savedBorders.entrySet()) {
+                en.getKey().getWorldBorder().setSize(en.getValue());
+            }
+        }
         if (found == null) {
             plugin.getLogger().warning("Не нашёл крепость в радиусе " + cfg.minRadius
                     + "–" + cfg.maxRadius + " блоков. Око будет вести к ближайшей доступной.");
@@ -361,8 +377,10 @@ public final class EndManager implements Listener {
         }
         p.addPotionEffect(new PotionEffect(PotionEffectType.GLOWING,
                 cfg.eyeGlowSeconds * 20, 0, true, false, true));
+        if (cfg.eyeBreakSound != null && !cfg.eyeBreakSound.isBlank()) {
+            w.playSound(loc, cfg.eyeBreakSound, cfg.eyeBreakSoundVolume, cfg.eyeBreakSoundPitch);
+        }
         Msg.action(p, "Око разбилось! Оно указало направление к крепости...");
-        p.playSound(Msg.villagerNo());
     }
 
     /** /locate structure stronghold ведёт только к выбранной крепости. */

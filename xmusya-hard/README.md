@@ -3,13 +3,13 @@
 Хардкор с прогрессией по игровым дням — плагин-порт одноимённого датапака.
 Paper/Leaf **Minecraft 26.3** (нужен JDK 25 для сборки).
 
-Готовый файл: [`BuiltPlugins/xmusya-hard-1.1.2.jar`](BuiltPlugins/xmusya-hard-1.1.2.jar)
+Готовый файл: [`BuiltPlugins/xmusya-hard-1.1.3.jar`](BuiltPlugins/xmusya-hard-1.1.3.jar)
 
 ## Установка
 
 1. Удалить/выключить старый датапак `<мир>/datapacks/xmusya-hard 26.3.zip`
    (иначе пак и плагин будут дублировать эффекты и мешать друг другу).
-2. Скопировать `xmusya-hard-1.1.2.jar` в `<сервер>/plugins/.
+2. Скопировать `xmusya-hard-1.1.3.jar` в `<сервер>/plugins/.
 3. Полностью перезапустить сервер (не `/reload`).
 4. Исключить бота из всех проверок: `/tag <ник_бота> add bot`.
 5. Открыть меню: `/xmh`.
@@ -83,9 +83,13 @@ end:
     min-radius: 5000      # крепость не ближе 5000 блоков от спавна
     max-radius: 8000
     disable-other-portals: true   # у всех остальных крепостей портал ломается
+    search-border-size: 50000     # барьер на время первого поиска крепости (0 = не трогать)
   eyes:
     break-chance: 0.20    # шанс поломки ока
     glow-seconds: 10
+    break-sound: "entity.lightning_bolt.thunder"   # "" = без звука
+    break-sound-volume: 1.0
+    break-sound-pitch: 1.0
   pearls:
     enderman-chance: 0.10            # 10% без Looting
     enderman-chance-looting: 0.20    # 20% с Looting III
@@ -176,6 +180,7 @@ end:
 | 1.1.0 | энд-механики (крепость, ока, портал, награды, пустота, яйцо) |
 | 1.1.1 | шанс жемчуга 10% / 20% с Looting III |
 | 1.1.2 | крепость в `/xmh` показывается только после находки, координаты — только админам |
+| 1.1.3 | дни берутся из мира (`getFullTime`), барьер 50000 на время первого поиска крепости, звук поломки ока, дисплеи ниже, фантомы КЛ на 10–15 выше игрока, вексы в глубине |
 
 ## Сборка
 
@@ -184,7 +189,7 @@ TC=/path/to/toolchain ./build.sh
 ```
 
 Ожидает `$TC/jdk-25*/bin/javac` и `$TC/lib/*.jar` (см. корневой README).
-Результат — `BuiltPlugins/xmusya-hard-1.1.2.jar`.
+Результат — `BuiltPlugins/xmusya-hard-1.1.3.jar`.
 
 ## Исходники
 
