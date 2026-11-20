@@ -350,6 +350,11 @@ end:
 
 ---
 
+## Разработка
+
+Плагин написан с помощью ИИ-агентов:
+**DeepSeek 4.1 Flash Free** и **Ernie 5.5 Flash Preview** (OpenCode).
+
 ## Сборка
 
 ```bash
