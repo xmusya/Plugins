@@ -102,6 +102,12 @@ public final class XmusyaHard extends JavaPlugin implements Listener {
     public final Map<UUID, Integer> deaths = new HashMap<>();
     public final Map<UUID, Integer> bmSurvived = new HashMap<>();
 
+    // энд-механики
+    public EndCfg endCfg;
+    public EndState endState;
+    public EndManager endManager;
+    public EndPortal endPortal;
+
     private final Random rnd = new Random();
     private BossBar mainBar;
     private BossBar warnBar;
@@ -123,6 +129,20 @@ public final class XmusyaHard extends JavaPlugin implements Listener {
         getServer().getPluginManager().registerEvents(this, this);
         if (getCommand("xmh") != null) {
             getCommand("xmh").setExecutor(this);
+        }
+
+        // --- энд-механики
+        endCfg = EndCfg.load(getConfig());
+        if (endCfg.enabled) {
+            endState = new EndState();
+            endState.bind(getDataFolder());
+            endState.load();
+            endManager = new EndManager(this, endCfg, endState);
+            endPortal = new EndPortal(this, endCfg, endState, endManager);
+            getServer().getPluginManager().registerEvents(endManager, this);
+            getServer().getPluginManager().registerEvents(endPortal, this);
+            endManager.start();
+            endPortal.start();
         }
 
         collectRecipeKeys();
@@ -158,6 +178,9 @@ public final class XmusyaHard extends JavaPlugin implements Listener {
     @Override
     public void onDisable() {
         saveState();
+        if (endState != null) {
+            endState.save();
+        }
         if (mainBar != null) {
             for (Player p : Bukkit.getOnlinePlayers()) {
                 p.hideBossBar(mainBar);
@@ -607,6 +630,9 @@ public final class XmusyaHard extends JavaPlugin implements Listener {
         growBorder(day);
         applyRules();
         checkPhase();
+        if (endPortal != null) {
+            endPortal.onNewDay(day);
+        }
     }
 
     private void growBorder(int day) {
@@ -1063,6 +1089,10 @@ public final class XmusyaHard extends JavaPlugin implements Listener {
     public void onJoin(PlayerJoinEvent event) {
         Player p = event.getPlayer();
         syncRecipes(p);
+        if (endManager != null) {
+            endManager.applyBonusHearts(p);
+            endManager.applyEggBuffs(p);
+        }
         p.sendMessage(Msg.prefix()
                 .append(Msg.c("Добро пожаловать. Меню: ", NamedTextColor.GRAY))
                 .append(Component.text("/xmh", NamedTextColor.YELLOW)
@@ -1146,6 +1176,17 @@ public final class XmusyaHard extends JavaPlugin implements Listener {
             return true;
         }
 
+        if (sub.equals("egg")) {
+            if (!(sender instanceof Player p)) {
+                sender.sendMessage("Команда только для игрока.");
+                return true;
+            }
+            if (endManager != null) {
+                endManager.activateEgg(p);
+            }
+            return true;
+        }
+
         boolean admin = !(sender instanceof Player p) || p.hasPermission("xmusyahard.admin")
                 || sender.isOp();
         if (!admin) {
@@ -1217,6 +1258,32 @@ public final class XmusyaHard extends JavaPlugin implements Listener {
                 }
                 jumpToPhase(idx);
             }
+            case "end" -> {
+                if (endManager == null) {
+                    sender.sendMessage(Msg.prefix().append(Msg.c(
+                            "Энд-механики выключены в config.yml (end.enabled).", NamedTextColor.RED)));
+                    return true;
+                }
+                String act = args.length > 1 ? args[1].toLowerCase() : "status";
+                switch (act) {
+                    case "locate" -> endManager.ensureStronghold();
+                    case "scan" -> endPortal.forceScan();
+                    case "reset" -> endPortal.resetPortal();
+                    default -> {
+                        Location l = endManager.strongholdLocation();
+                        sender.sendMessage(Msg.prefix().append(Msg.c("Энд:", NamedTextColor.GOLD)));
+                        sender.sendMessage(Component.text("Крепость: ", NamedTextColor.GRAY)
+                                .append(Component.text(l == null ? "не выбрана"
+                                        : l.getBlockX() + ", " + l.getBlockZ(), NamedTextColor.AQUA)));
+                        sender.sendMessage(Component.text("Рамок найдено: ", NamedTextColor.GRAY)
+                                .append(Component.text(String.valueOf(endState.frames.size()),
+                                        NamedTextColor.YELLOW))
+                                .append(Component.text(", закрыто: ", NamedTextColor.GRAY))
+                                .append(Component.text(String.valueOf(endState.filledCount()),
+                                        NamedTextColor.GREEN)));
+                    }
+                }
+            }
             case "reload" -> {
                 loadConfig();
                 applyRules();
@@ -1239,6 +1306,10 @@ public final class XmusyaHard extends JavaPlugin implements Listener {
                 .append(Msg.c(" — Кровавая луна", NamedTextColor.GRAY)));
         sender.sendMessage(Component.text("/xmh phase <name>", NamedTextColor.YELLOW)
                 .append(Msg.c(" — установить фазу", NamedTextColor.GRAY)));
+        sender.sendMessage(Component.text("/xmh end status|locate|scan|reset", NamedTextColor.YELLOW)
+                .append(Msg.c(" — крепость/портал Энда", NamedTextColor.GRAY)));
+        sender.sendMessage(Component.text("/xmh egg", NamedTextColor.YELLOW)
+                .append(Msg.c(" — привязать яйцо дракона (Спешка/Скорость)", NamedTextColor.GRAY)));
         sender.sendMessage(Component.text("/xmh reload", NamedTextColor.YELLOW)
                 .append(Msg.c(" — перечитать config.yml", NamedTextColor.GRAY)));
     }

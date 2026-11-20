@@ -308,3 +308,111 @@ phases:
       - firework_rocket_simple
       - firework_star
       - firework_star_fade
+
+# ============================================================
+#  ЭНД-МЕХАНИКИ (1.1.0)
+#  Если секции end: нет — используются значения по умолчанию
+#  из кода (всё равно всё работает).
+# ============================================================
+end:
+  enabled: true
+
+  stronghold:
+    # Крепость выбирается от спавна: не ближе min-radius и не дальше max-radius.
+    # Око и /locate structure stronghold ведут ТОЛЬКО к ней.
+    min-radius: 5000
+    max-radius: 8000
+    # У всех ОСТАЛЬНЫХ крепостей портал ломается (выбивается одна рамка),
+    # как только их чанки подгружаются.
+    disable-other-portals: true
+    # Поиск комнаты портала вокруг выбранной крепости.
+    scan-radius-chunks: 8
+    scan-y-min: -64
+    scan-y-max: 128
+    scan-chunks-per-tick: 8
+
+  eyes:
+    # Шанс, что око разобьётся (0..1). При поломке: визуальная молния,
+    # лёгкий урон рядом и Свечение на игрока.
+    break-chance: 0.20
+    flight-ticks: 30
+    lightning-damage: 4.0
+    lightning-radius: 4.0
+    glow-seconds: 10
+    cooldown-ms: 400
+
+  pearls:
+    # Жемчуг Энда падает ТОЛЬКО с эндерменов.
+    enderman-chance: 0.28
+    enderman-chance-looting: 0.48
+    remove-from-barter: true
+
+  blaze:
+    # Нельзя ставить блоки ближе этого радиуса к спавнеру блейзов.
+    no-build-radius: 12
+    # Взрывы гастов не ломают блоки крепости (незер-кирпич) и спавнеры.
+    protect-explosions: true
+    # Гасты рядом со спавнером: шанс за проверку (раз в 5 сек) и макс. число.
+    ghast-chance: 0.15
+    ghast-max: 2
+    ghast-radius: 24
+
+  portal:
+    frames: 12
+    # Награда за рамку — случайный бафф на N часов РЕАЛЬНОГО времени.
+    # Одинаковые баффы складываются (две Спешки = Спешка II).
+    buff-hours: 24
+    # За каждые N закрытых игроком рамок — навсегда +1 сердце (2.0 HP).
+    hearts-per-frames: 2
+    display-interval-ticks: 2
+    display-view-range: 24
+    # Пул предметов для рамок. Если позиций больше, чем рамок —
+    # случайно выбираются нужные. max-per-portal — лимит на портал.
+    items:
+      - { material: minecraft:iron_ingot,     name: "Железо",            amount: 16, max-per-portal: 3 }
+      - { material: minecraft:gold_ingot,     name: "Золото",            amount: 12, max-per-portal: 2 }
+      - { material: minecraft:diamond,        name: "Алмазы",            amount: 4,  max-per-portal: 2 }
+      - { material: minecraft:emerald,        name: "Изумруды",          amount: 8,  max-per-portal: 2 }
+      - { material: minecraft:ender_pearl,    name: "Жемчуг Энда",       amount: 4,  max-per-portal: 2 }
+      - { material: minecraft:blaze_rod,      name: "Огненный стержень", amount: 6,  max-per-portal: 2 }
+      - { material: minecraft:obsidian,       name: "Обсидиан",          amount: 16, max-per-portal: 2 }
+      - { material: minecraft:crying_obsidian, name: "Плачущий обсидиан", amount: 6, max-per-portal: 2 }
+      - { material: minecraft:ancient_debris, name: "Древние обломки",   amount: 2,  max-per-portal: 1 }
+      - { material: minecraft:netherite_ingot, name: "Незеритовый слиток", amount: 1, max-per-portal: 1 }
+      - { material: minecraft:nether_star,    name: "Звезда Незера",     amount: 1,  max-per-portal: 1 }
+      - { material: minecraft:gold_block,     name: "Блок золота",       amount: 2,  max-per-portal: 1 }
+
+  cycle:
+    # С этого дня каждые interval-days портал гаснет и 1..N рамок
+    # сбрасываются с новыми предметами.
+    start-day: 100
+    interval-days: 50
+    reset-min: 1
+    reset-max: 4
+
+  protection:
+    # За попытку сломать портал/рамку/спавнер комнаты: регенерация,
+    # визуальный взрыв, проклятие и запрет входа в Энд.
+    curse-hours: 6
+    end-ban-hours: 6
+
+  outer-islands:
+    # Внешние острова Энда закрыты до этого дня (шлюзы + отталкивание).
+    unlock-day: 80
+    max-distance: 450
+
+  dragon:
+    # Прочность щита при блоке атаки дракона тратится не чаще этого времени.
+    shield-cooldown-ms: 1800
+
+  void:
+    # Падение ниже Y=0 в Энде при наличии жемчуга: левитация и бонус.
+    min-y: 0
+    pearls: 2
+    levitation-seconds: 10
+    slow-falling-seconds: 15
+
+  egg:
+    # /xmh egg: хранитель яйца дракона получает бесконечные эффекты.
+    haste-amplifier: 1
+    speed-amplifier: 0

@@ -74,6 +74,17 @@ public final class Menu {
         p.sendMessage(btn("Показать/Скрыть BossBar", NamedTextColor.AQUA,
                 "/xmh bar", "Личный переключатель BossBar"));
 
+        if (plugin.endState != null) {
+            String stronghold = plugin.endState.strongholdChosen
+                    ? plugin.endState.strongholdX + ", " + plugin.endState.strongholdZ
+                    : "не найдена";
+            p.sendMessage(Component.text("Энд: ", NamedTextColor.GRAY)
+                    .append(Component.text("рамки " + plugin.endState.filledCount() + "/"
+                            + plugin.endState.frames.size(), NamedTextColor.LIGHT_PURPLE))
+                    .append(Component.text("  |  Крепость: ", NamedTextColor.GRAY))
+                    .append(Component.text(stronghold, NamedTextColor.AQUA)));
+        }
+
         boolean admin = p.hasPermission("xmusyahard.admin") || p.isOp();
         if (!admin) {
             return;
@@ -84,6 +95,10 @@ public final class Menu {
                 .append(btn("Сброс", NamedTextColor.RED, "/xmh reset", "Сбросить прогресс к дню 0"))
                 .append(btn("Пауза фаз", NamedTextColor.YELLOW, "/xmh pause", "Остановить счётчик дней"))
                 .append(btn("Продолжить", NamedTextColor.GREEN, "/xmh resume", "Возобновить фазы")));
+
+        p.sendMessage(btn("Энд", NamedTextColor.LIGHT_PURPLE, "/xmh end status", "Крепость и рамки портала")
+                .append(btn("Скан", NamedTextColor.AQUA, "/xmh end scan", "Пересканировать комнату портала"))
+                .append(btn("Сброс", NamedTextColor.RED, "/xmh end reset", "Сбросить рамки портала")));
 
         p.sendMessage(Component.text("КЛ: ", NamedTextColor.DARK_RED)
                 .append(btn("Старт", NamedTextColor.RED, "/xmh bm start", "Запустить Кровавую луну"))

@@ -46,6 +46,10 @@ public final class Msg {
         chat(p, c(text, NamedTextColor.GRAY));
     }
 
+    public static void chat(Player p, String text, NamedTextColor color) {
+        chat(p, c(text, color));
+    }
+
     public static void action(Player p, String text) {
         p.sendActionBar(Component.text(text, NamedTextColor.RED));
     }
