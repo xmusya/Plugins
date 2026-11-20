@@ -106,6 +106,8 @@ public final class EndManager implements Listener {
         Bukkit.getScheduler().runTaskTimer(plugin, this::tickPortalBuffs, 80L, 80L);
         // Проверка чужих порталов рядом с игроками (раз в 10 сек)
         Bukkit.getScheduler().runTaskTimer(plugin, this::tickNearbyPortals, 200L, 200L);
+        // Если игрок рядом с порталом (±100 по X/Y/Z) — раз в 5 сек скан и починка
+        Bukkit.getScheduler().runTaskTimer(plugin, this::tickPortalArea, 100L, 100L);
     }
 
     // ================================================================== крепость
@@ -865,6 +867,42 @@ public final class EndManager implements Listener {
 
     private EndPortal endPortal() {
         return plugin.endPortal;
+    }
+
+    /**
+     * Раз в 5 секунд: если хотя бы один игрок в кубе ±100 по X/Y/Z от портала,
+     * пересканируем и чиним рамки (кнопка /xmh end scan в автоматическом режиме).
+     */
+    private void tickPortalArea() {
+        if (!cfg.enabled) {
+            return;
+        }
+        Location c = strongholdLocation();
+        if (c == null || plugin.endPortal == null) {
+            return;
+        }
+        boolean near = false;
+        for (Player p : plugin.players()) {
+            if (!p.getWorld().equals(c.getWorld())) {
+                continue;
+            }
+            Location l = p.getLocation();
+            if (Math.abs(l.getX() - c.getX()) <= 100.0
+                    && Math.abs(l.getY() - c.getY()) <= 100.0
+                    && Math.abs(l.getZ() - c.getZ()) <= 100.0) {
+                near = true;
+                break;
+            }
+        }
+        if (!near) {
+            return;
+        }
+        // Починка выбитых рамок
+        plugin.endPortal.repair();
+        // Неполный набор — пересканировать (может, нашли не все чанки)
+        if (state.frames.size() < cfg.portalFrames) {
+            plugin.endPortal.forceScan();
+        }
     }
 
     /** Раз в 10 сек проверяем крепости в радиусе 100 блоков от игроков. */
