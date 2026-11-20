@@ -327,13 +327,31 @@ public final class EndPortal implements Listener {
         }
         int cx = (minX + maxX) / 2;
         int cz = (minZ + maxZ) / 2;
+        // Портал Энда — плоский слой 3×3 на уровне рамок (ванильная механика).
         for (int x = cx - 1; x <= cx + 1; x++) {
             for (int z = cz - 1; z <= cz + 1; z++) {
-                for (int dy = 0; dy <= 2; dy++) {
-                    w.getBlockAt(x, y + dy, z).setType(Material.END_PORTAL, false);
-                }
+                w.getBlockAt(x, y, z).setType(Material.END_PORTAL, false);
             }
         }
+        // Через 5 тиков подчищаем возможные дубли порталов выше/ниже
+        // (в старых версиях плагин заполнял 3 слоя по Y).
+        final World fw = w;
+        final int fcx = cx, fcz = cz, fy = y;
+        Bukkit.getScheduler().runTaskLater(plugin, () -> {
+            for (int dx = -1; dx <= 1; dx++) {
+                for (int dz = -1; dz <= 1; dz++) {
+                    for (int dy = -2; dy <= 2; dy++) {
+                        if (dy == 0) {
+                            continue;
+                        }
+                        Block b = fw.getBlockAt(fcx + dx, fy + dy, fcz + dz);
+                        if (b.getType() == Material.END_PORTAL) {
+                            b.setType(Material.AIR, false);
+                        }
+                    }
+                }
+            }
+        }, 5L);
         Msg.broadcast("Портал в Энд открыт!", NamedTextColor.LIGHT_PURPLE);
         for (Player p : Bukkit.getOnlinePlayers()) {
             p.playSound(Msg.witherSpawn());
