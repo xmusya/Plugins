@@ -343,8 +343,9 @@ end:
 
   pearls:
     # Жемчуг Энда падает ТОЛЬКО с эндерменов.
-    enderman-chance: 0.28
-    enderman-chance-looting: 0.48
+    # 0.10 = 10% без чар, 0.20 = 20% с Looting III (I/II — между ними).
+    enderman-chance: 0.10
+    enderman-chance-looting: 0.20
     remove-from-barter: true
 
   blaze:

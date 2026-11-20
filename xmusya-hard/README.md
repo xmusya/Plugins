@@ -3,13 +3,13 @@
 Хардкор с прогрессией по игровым дням — плагин-порт одноимённого датапака.
 Paper/Leaf **Minecraft 26.3** (нужен JDK 25 для сборки).
 
-Готовый файл: [`BuiltPlugins/xmusya-hard-1.1.0.jar`](BuiltPlugins/xmusya-hard-1.1.0.jar)
+Готовый файл: [`BuiltPlugins/xmusya-hard-1.1.1.jar`](BuiltPlugins/xmusya-hard-1.1.1.jar)
 
 ## Установка
 
 1. Удалить/выключить старый датапак `<мир>/datapacks/xmusya-hard 26.3.zip`
    (иначе пак и плагин будут дублировать эффекты и мешать друг другу).
-2. Скопировать `xmusya-hard-1.1.0.jar` в `<сервер>/plugins/.
+2. Скопировать `xmusya-hard-1.1.1.jar` в `<сервер>/plugins/.
 3. Полностью перезапустить сервер (не `/reload`).
 4. Исключить бота из всех проверок: `/tag <ник_бота> add bot`.
 5. Открыть меню: `/xmh`.
@@ -87,8 +87,8 @@ end:
     break-chance: 0.20    # шанс поломки ока
     glow-seconds: 10
   pearls:
-    enderman-chance: 0.28
-    enderman-chance-looting: 0.48
+    enderman-chance: 0.10            # 10% без Looting
+    enderman-chance-looting: 0.20    # 20% с Looting III
     remove-from-barter: true
   blaze:
     no-build-radius: 12
@@ -171,7 +171,7 @@ TC=/path/to/toolchain ./build.sh
 ```
 
 Ожидает `$TC/jdk-25*/bin/javac` и `$TC/lib/*.jar` (см. корневой README).
-Результат — `BuiltPlugins/xmusya-hard-1.1.0.jar`.
+Результат — `BuiltPlugins/xmusya-hard-1.1.1.jar`.
 
 ## Исходники
 

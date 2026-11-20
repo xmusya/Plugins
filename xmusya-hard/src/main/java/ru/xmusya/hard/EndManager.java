@@ -478,8 +478,9 @@ public final class EndManager implements Listener {
         e.getDrops().removeIf(st -> st != null && st.getType() == Material.ENDER_PEARL);
         double chance = cfg.pearlChance;
         if (looting > 0) {
-            double step = Math.max(0.0, cfg.pearlChanceLooting - cfg.pearlChance) / 2.0;
-            chance = Math.min(1.0, cfg.pearlChance + step * looting);
+            // Looting I..III линейно: база -> значение при Looting III
+            double step = Math.max(0.0, cfg.pearlChanceLooting - cfg.pearlChance) / 3.0;
+            chance = Math.min(1.0, cfg.pearlChance + step * Math.min(3, looting));
         }
         if (rnd.nextDouble() < chance) {
             e.getDrops().add(new ItemStack(Material.ENDER_PEARL, 1));

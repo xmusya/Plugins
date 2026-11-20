@@ -43,8 +43,8 @@ public final class EndCfg {
     public long eyeCooldownMs = 400L;
 
     // --- жемчуг
-    public double pearlChance = 0.28;
-    public double pearlChanceLooting = 0.48;
+    public double pearlChance = 0.10;
+    public double pearlChanceLooting = 0.20;
     public boolean removePearlFromBarter = true;
 
     // --- спавнеры блейзов
