@@ -428,6 +428,10 @@ end:
     # Сердца при спасении из пустоты: -1 = отнимает 1 сердце,
     # 0 = не трогать, положительное = даёт сердца
     hearts: -1
+    # Снимать ачивку «Great View From Up Here» (minecraft:end/levitate),
+    # которую выдаёт левитация, и возвращать её опыт
+    cancel-levitation-advancement: true
+    levitation-advancement-xp: 50
     slow-falling-seconds: 15
     slow-falling-amplifier: 0    # 0 = Плавное падение I
 

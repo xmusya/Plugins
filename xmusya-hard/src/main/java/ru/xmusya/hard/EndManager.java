@@ -29,6 +29,7 @@ import org.bukkit.event.entity.EntityDeathEvent;
 import org.bukkit.event.entity.EntityExplodeEvent;
 import org.bukkit.event.entity.EntityPortalEvent;
 import org.bukkit.event.entity.PiglinBarterEvent;
+import org.bukkit.event.player.PlayerAdvancementDoneEvent;
 import org.bukkit.event.player.PlayerCommandPreprocessEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.event.player.PlayerTeleportEvent;
@@ -758,6 +759,32 @@ public final class EndManager implements Listener {
         e.setCancelled(true);
         Msg.action(e.getPlayer(), "Внешние острова Энда откроются на "
                 + cfg.outerUnlockDay + "-й день!");
+    }
+
+    /**
+     * Левитация (в т.ч. от спасения из пустоты) выдаёт ачивку
+     * «Great View From Up Here» (minecraft:end/levitate) и опыт — снимаем её
+     * и возвращаем накопленный опыт.
+     */
+    @EventHandler(priority = EventPriority.MONITOR)
+    public void onAdvancementDone(PlayerAdvancementDoneEvent e) {
+        if (!cfg.enabled || !cfg.cancelLevitationAdvancement) {
+            return;
+        }
+        NamespacedKey key = e.getAdvancement().getKey();
+        if (!key.equals(NamespacedKey.minecraft("end/levitate"))) {
+            return;
+        }
+        Player p = e.getPlayer();
+        Bukkit.dispatchCommand(Bukkit.getConsoleSender(),
+                "advancement revoke " + p.getName() + " only minecraft:end/levitate");
+        int back = cfg.levitationAdvancementXp;
+        if (back > 0) {
+            try {
+                p.giveExp(-back);
+            } catch (RuntimeException ignored) {
+            }
+        }
     }
 
     // ================================================================== тики

@@ -93,6 +93,10 @@ public final class EndCfg {
     public int voidLevitationAmplifier = 14;
     /** Сердца при спасении из пустоты: + даёт, − отнимает, 0 = не трогать. */
     public int voidHearts = -1;
+    /** Снимать ачивку «Great View From Up Here» (minecraft:end/levitate). */
+    public boolean cancelLevitationAdvancement = true;
+    /** Сколько опыта возвращать за снятую ачивку (0 = не возвращать). */
+    public int levitationAdvancementXp = 50;
     public int voidSlowFallingSeconds = 15;
     /** Уровень Плавного падения: 0 = Slow Falling I. */
     public int voidSlowFallingAmplifier = 0;
@@ -168,6 +172,8 @@ public final class EndCfg {
         e.voidLevitationSeconds = s.getInt("void.levitation-seconds", e.voidLevitationSeconds);
         e.voidLevitationAmplifier = Math.max(0, s.getInt("void.levitation-amplifier", e.voidLevitationAmplifier));
         e.voidHearts = s.getInt("void.hearts", e.voidHearts);
+        e.cancelLevitationAdvancement = s.getBoolean("void.cancel-levitation-advancement", e.cancelLevitationAdvancement);
+        e.levitationAdvancementXp = Math.max(0, s.getInt("void.levitation-advancement-xp", e.levitationAdvancementXp));
         e.voidSlowFallingSeconds = s.getInt("void.slow-falling-seconds", e.voidSlowFallingSeconds);
         e.voidSlowFallingAmplifier = s.getInt("void.slow-falling-amplifier", e.voidSlowFallingAmplifier);
 
