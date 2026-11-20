@@ -318,13 +318,16 @@ end:
   enabled: true
 
   stronghold:
+    # Механика «одна рабочая крепость + ломаные порталы в остальных».
+    # false = око ведёт к ближайшей крепости (как в ванили), ничего не ломается.
+    enabled: false
     # Крепость выбирается от спавна: не ближе min-radius и не дальше max-radius.
     # Око и /locate structure stronghold ведут ТОЛЬКО к ней.
     min-radius: 5000
     max-radius: 8000
     # У всех ОСТАЛЬНЫХ крепостей портал ломается (выбивается одна рамка),
     # как только их чанки подгружаются.
-    disable-other-portals: true
+    disable-other-portals: false
     # Поиск комнаты портала вокруг выбранной крепости.
     scan-radius-chunks: 8
     scan-y-min: -64
@@ -419,7 +422,9 @@ end:
     min-y: 0
     pearls: 2
     levitation-seconds: 10
+    levitation-amplifier: 4      # 4 = Левитация V
     slow-falling-seconds: 15
+    slow-falling-amplifier: 0    # 0 = Плавное падение I
 
   egg:
     # /xmh egg: хранитель яйца дракона получает бесконечные эффекты.

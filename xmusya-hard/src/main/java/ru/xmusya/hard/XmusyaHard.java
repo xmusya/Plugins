@@ -11,6 +11,7 @@ import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.World;
 import org.bukkit.WorldBorder;
+import org.bukkit.NamespacedKey;
 import org.bukkit.attribute.Attribute;
 import org.bukkit.attribute.AttributeInstance;
 import org.bukkit.command.Command;
@@ -1239,6 +1240,25 @@ public final class XmusyaHard extends JavaPlugin implements Listener {
             return true;
         }
 
+        // /xmh effect give <эффект|hearts> <ник> — передать свой эффект игроку
+        if (sub.equals("effect")) {
+            if (!(sender instanceof Player from)) {
+                sender.sendMessage("Команда только для игрока.");
+                return true;
+            }
+            if (args.length < 3) {
+                Msg.chat(from, "Использование: /xmh effect give <эффект|hearts> <ник>");
+                return true;
+            }
+            Player to = Bukkit.getPlayerExact(args[2]);
+            if (to == null) {
+                Msg.chat(from, "Игрок " + args[2] + " не в сети.", NamedTextColor.RED);
+                return true;
+            }
+            effectTransfer(from, to, args[1]);
+            return true;
+        }
+
         boolean admin = !(sender instanceof Player p) || p.hasPermission("xmusyahard.admin")
                 || sender.isOp();
         if (!admin) {
@@ -1366,8 +1386,116 @@ public final class XmusyaHard extends JavaPlugin implements Listener {
                 .append(Msg.c(" — крепость/портал Энда", NamedTextColor.GRAY)));
         sender.sendMessage(Component.text("/xmh egg", NamedTextColor.YELLOW)
                 .append(Msg.c(" — привязать яйцо дракона (Спешка/Скорость)", NamedTextColor.GRAY)));
+        sender.sendMessage(Component.text("/xmh effect give <эффект|hearts> <ник>", NamedTextColor.YELLOW)
+                .append(Msg.c(" — передать свой позитивный эффект или сердца игроку",
+                        NamedTextColor.GRAY)));
         sender.sendMessage(Component.text("/xmh reload", NamedTextColor.YELLOW)
                 .append(Msg.c(" — перечитать config.yml", NamedTextColor.GRAY)));
+    }
+
+    /** Передача положительного эффекта (или сердца) другому игроку. */
+    private void effectTransfer(Player from, Player to, String what) {
+        if (what.equalsIgnoreCase("hearts") || what.equalsIgnoreCase("сердца")
+                || what.equalsIgnoreCase("сердце")) {
+            int have = stateHearts(from);
+            if (have <= 0) {
+                Msg.chat(from, "У вас нет бонусных сердец (их дают за рамки портала).",
+                        NamedTextColor.RED);
+                return;
+            }
+            heartsTransfer(from, to, 1);
+            Msg.chat(from, Msg.c("Вы передали ", NamedTextColor.GRAY)
+                    .append(Msg.c("1 сердце", NamedTextColor.RED))
+                    .append(Msg.c(" игроку " + to.getName() + ".", NamedTextColor.GRAY)));
+            Msg.chat(to, Msg.c("Вам передали ", NamedTextColor.GRAY)
+                    .append(Msg.c("1 сердце", NamedTextColor.RED))
+                    .append(Msg.c(" (от " + from.getName() + ")", NamedTextColor.GRAY)));
+            return;
+        }
+
+        PotionEffectType type = matchEffect(what);
+        if (type == null) {
+            Msg.chat(from, "Неизвестный эффект. Примеры: haste, speed, strength, "
+                    + "resistance, regeneration, fire_resistance, absorption, "
+                    + "night_vision, jump_boost, luck.", NamedTextColor.RED);
+            return;
+        }
+        PotionEffect mine = null;
+        for (PotionEffect eff : from.getActivePotionEffects()) {
+            if (eff.getType().equals(type)) {
+                mine = eff;
+                break;
+            }
+        }
+        if (mine == null) {
+            Msg.chat(from, "У вас нет эффекта «" + prettyEffect(type) + "».", NamedTextColor.RED);
+            return;
+        }
+        int left = mine.getDuration() / 20;
+        if (left < 5) {
+            Msg.chat(from, "Эффект почти закончился — передавать нечего.", NamedTextColor.RED);
+            return;
+        }
+        // Только положительные эффекты
+        if (!isPositiveEffect(type)) {
+            Msg.chat(from, "Этот эффект отрицательный — передавать нельзя.", NamedTextColor.RED);
+            return;
+        }
+        from.removePotionEffect(type);
+        to.addPotionEffect(new PotionEffect(type, left * 20, mine.getAmplifier(),
+                true, true, true));
+        Msg.chat(from, Msg.c("Вы передали ", NamedTextColor.GRAY)
+                .append(Msg.c(prettyEffect(type), NamedTextColor.GREEN))
+                .append(Msg.c(" игроку " + to.getName() + ".", NamedTextColor.GRAY)));
+        Msg.chat(to, Msg.c("Вам передали ", NamedTextColor.GRAY)
+                .append(Msg.c(prettyEffect(type), NamedTextColor.GREEN))
+                .append(Msg.c(" (от " + from.getName() + ")", NamedTextColor.GRAY)));
+    }
+
+    private static PotionEffectType matchEffect(String name) {
+        String n = name.toLowerCase(java.util.Locale.ROOT).replace(' ', '_');
+        try {
+            return org.bukkit.Registry.EFFECT.get(NamespacedKey.minecraft(n));
+        } catch (RuntimeException ignored) {
+            return null;
+        }
+    }
+
+    private static String prettyEffect(PotionEffectType type) {
+        String s = type.getKey().getKey().replace('_', ' ');
+        return Character.toUpperCase(s.charAt(0)) + s.substring(1);
+    }
+
+    private static boolean isPositiveEffect(PotionEffectType t) {
+        return switch (t.getKey().getKey()) {
+            case "speed", "haste", "strength", "jump_boost", "regeneration",
+                 "resistance", "fire_resistance", "water_breathing",
+                 "invisibility", "night_vision", "health_boost", "absorption",
+                 "saturation", "luck", "slow_falling", "conduit_power",
+                 "dolphins_grace", "hero_of_the_village", "instant_health",
+                 "instant_damage" -> true;
+            default -> false;
+        };
+    }
+
+    private int stateHearts(Player p) {
+        return endState == null ? 0 : endState.bonusHearts.getOrDefault(p.getUniqueId(), 0);
+    }
+
+    private void heartsTransfer(Player from, Player to, int count) {
+        if (endState == null || endManager == null) {
+            return;
+        }
+        int have = endState.bonusHearts.getOrDefault(from.getUniqueId(), 0);
+        int take = Math.min(have, count);
+        if (take <= 0) {
+            return;
+        }
+        endState.bonusHearts.put(from.getUniqueId(), have - take);
+        endState.bonusHearts.merge(to.getUniqueId(), take, Integer::sum);
+        endState.save();
+        endManager.applyBonusHearts(from);
+        endManager.applyBonusHearts(to);
     }
 
     public void reset() {

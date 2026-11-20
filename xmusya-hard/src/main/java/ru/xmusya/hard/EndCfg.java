@@ -24,6 +24,8 @@ public final class EndCfg {
     public boolean enabled = true;
 
     // --- крепость
+    /** Включена ли механика «одна крепость + ломаные порталы в остальных». */
+    public boolean strongholdEnabled = false;
     public int minRadius = 5000;
     public int maxRadius = 8000;
     /** Радиус поиска комнаты портала вокруг найденной крепости (в чанках). */
@@ -33,8 +35,8 @@ public final class EndCfg {
     public int scanChunksPerTick = 8;
     /** На время первого поиска крепости барьер временно расширяется до этого размера. */
     public int searchBorderSize = 50000;
-    /** Ломать порталы во всех остальных крепостях. */
-    public boolean disableOtherPortals = true;
+    /** Ломать порталы во всех остальных крепостях (только при stronghold.enabled). */
+    public boolean disableOtherPortals = false;
 
     // --- ока
     public double eyeBreakChance = 0.20;
@@ -87,7 +89,11 @@ public final class EndCfg {
     public int voidMinY = 0;
     public int voidPearls = 2;
     public int voidLevitationSeconds = 10;
+    /** Уровень Левитации: 4 = Левитация V (amplifier от 0). */
+    public int voidLevitationAmplifier = 4;
     public int voidSlowFallingSeconds = 15;
+    /** Уровень Плавного падения: 0 = Slow Falling I. */
+    public int voidSlowFallingAmplifier = 0;
 
     // --- яйцо дракона
     public int eggHasteAmplifier = 1;
@@ -106,6 +112,7 @@ public final class EndCfg {
         }
         e.enabled = s.getBoolean("enabled", e.enabled);
 
+        e.strongholdEnabled = s.getBoolean("stronghold.enabled", e.strongholdEnabled);
         e.minRadius = s.getInt("stronghold.min-radius", e.minRadius);
         e.maxRadius = Math.max(e.minRadius + 500, s.getInt("stronghold.max-radius", e.maxRadius));
         e.scanRadiusChunks = s.getInt("stronghold.scan-radius-chunks", e.scanRadiusChunks);
@@ -157,7 +164,9 @@ public final class EndCfg {
         e.voidMinY = s.getInt("void.min-y", e.voidMinY);
         e.voidPearls = s.getInt("void.pearls", e.voidPearls);
         e.voidLevitationSeconds = s.getInt("void.levitation-seconds", e.voidLevitationSeconds);
+        e.voidLevitationAmplifier = s.getInt("void.levitation-amplifier", e.voidLevitationAmplifier);
         e.voidSlowFallingSeconds = s.getInt("void.slow-falling-seconds", e.voidSlowFallingSeconds);
+        e.voidSlowFallingAmplifier = s.getInt("void.slow-falling-amplifier", e.voidSlowFallingAmplifier);
 
         e.eggHasteAmplifier = s.getInt("egg.haste-amplifier", e.eggHasteAmplifier);
         e.eggSpeedAmplifier = s.getInt("egg.speed-amplifier", e.eggSpeedAmplifier);

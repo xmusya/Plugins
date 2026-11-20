@@ -7,7 +7,7 @@
 
 | Плагин | Версия | Что делает | Jar |
 |---|---|---|---|
-| [xmusya-hard](xmusya-hard/) | 1.1.4 | Хардкор с прогрессией по игровым дням: фазы, барьер, запреты, Кровавая луна | [xmusya-hard-1.1.4.jar](xmusya-hard/BuiltPlugins/xmusya-hard-1.1.4.jar) |
+| [xmusya-hard](xmusya-hard/) | 1.1.5 | Хардкор с прогрессией по игровым дням: фазы, барьер, запреты, Кровавая луна | [xmusya-hard-1.1.5.jar](xmusya-hard/BuiltPlugins/xmusya-hard-1.1.5.jar) |
 
 ## Установка любого плагина
 

@@ -115,7 +115,7 @@ public final class EndManager implements Listener {
         // ограничен стартовыми 650 блоками). Потом возвращаем как было.
         Map<World, Double> savedBorders = new HashMap<>();
         boolean borderChanged = false;
-        if (cfg.searchBorderSize > 0) {
+        if (cfg.searchBorderSize > 0 && cfg.strongholdEnabled) {
             for (World w : Bukkit.getWorlds()) {
                 savedBorders.put(w, w.getWorldBorder().getSize());
                 w.getWorldBorder().setSize(cfg.searchBorderSize);
@@ -130,13 +130,18 @@ public final class EndManager implements Listener {
             return;
         }
 
+        // Механика «одна крепость + ломаные порталы» отключена — берём ближайшую
+        // без ограничений по радиусу.
+        int minR = cfg.strongholdEnabled ? cfg.minRadius : 0;
+        int maxR = cfg.strongholdEnabled ? cfg.maxRadius : 2_000_000;
+
         Location origin = spawn.clone();
         Location found = null;
         int guard = 0;
         while (guard++ < 32) {
             StructureSearchResult r;
             try {
-                r = ow.locateNearestStructure(origin, stronghold, cfg.maxRadius, false);
+                r = ow.locateNearestStructure(origin, stronghold, maxR, false);
             } catch (Throwable t) {
                 plugin.getLogger().warning("Поиск крепости не удался: " + t.getMessage());
                 break;
@@ -146,10 +151,10 @@ public final class EndManager implements Listener {
             }
             Location loc = r.getLocation();
             double dist = Math.hypot(loc.getX() - spawn.getX(), loc.getZ() - spawn.getZ());
-            if (dist > cfg.maxRadius) {
+            if (dist > maxR) {
                 break;
             }
-            if (dist >= cfg.minRadius) {
+            if (dist >= minR) {
                 found = loc;
                 break;
             }
@@ -171,7 +176,7 @@ public final class EndManager implements Listener {
             plugin.getLogger().warning("Не нашёл крепость в радиусе " + cfg.minRadius
                     + "–" + cfg.maxRadius + " блоков. Око будет вести к ближайшей доступной.");
             try {
-                StructureSearchResult r = ow.locateNearestStructure(spawn, stronghold, cfg.maxRadius * 2, false);
+                StructureSearchResult r = ow.locateNearestStructure(spawn, stronghold, maxR, false);
                 found = r == null ? null : r.getLocation();
             } catch (Throwable ignored) {
             }
@@ -386,7 +391,7 @@ public final class EndManager implements Listener {
     /** /locate structure stronghold ведёт только к выбранной крепости. */
     @EventHandler(priority = EventPriority.HIGHEST)
     public void onLocateCommand(PlayerCommandPreprocessEvent e) {
-        if (!cfg.enabled || !state.strongholdChosen) {
+        if (!cfg.enabled || !cfg.strongholdEnabled || !state.strongholdChosen) {
             return;
         }
         String msg = e.getMessage().toLowerCase(Locale.ROOT).trim();
@@ -413,7 +418,8 @@ public final class EndManager implements Listener {
     // ================================================================== порталы чужих крепостей
     @EventHandler(priority = EventPriority.MONITOR)
     public void onChunkLoad(ChunkLoadEvent e) {
-        if (!cfg.enabled || !cfg.disableOtherPortals || !state.strongholdChosen) {
+        if (!cfg.enabled || !cfg.strongholdEnabled || !cfg.disableOtherPortals
+                || !state.strongholdChosen) {
             return;
         }
         Chunk chunk = e.getChunk();
@@ -741,10 +747,10 @@ public final class EndManager implements Listener {
         takePearls(p, cfg.voidPearls);
 
         p.addPotionEffect(new PotionEffect(PotionEffectType.LEVITATION,
-                cfg.voidLevitationSeconds * 20, 4, true, false, true));
+                cfg.voidLevitationSeconds * 20, cfg.voidLevitationAmplifier, true, false, true));
         Bukkit.getScheduler().runTaskLater(plugin, () -> {
             p.addPotionEffect(new PotionEffect(PotionEffectType.SLOW_FALLING,
-                    cfg.voidSlowFallingSeconds * 20, 0, true, false, true));
+                    cfg.voidSlowFallingSeconds * 20, cfg.voidSlowFallingAmplifier, true, false, true));
         }, cfg.voidLevitationSeconds * 20L);
 
         int hearts = 1 + rnd.nextInt(3);

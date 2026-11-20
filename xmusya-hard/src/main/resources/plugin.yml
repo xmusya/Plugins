@@ -1,5 +1,5 @@
 name: xmusya-hard
-version: 1.1.4
+version: 1.1.5
 main: ru.xmusya.hard.XmusyaHard
 api-version: '1.21'
 description: Hardcore day-gated progression (port of xmusya-hard datapack)
@@ -8,7 +8,7 @@ website: https://github.com/xmusya
 commands:
   xmh:
     description: xmusya-hard menu and admin commands
-    usage: /xmh [bar|egg|skip|reset|pause|resume|bm <...>|phase <name>|end <status|locate|scan|reset>|reload]
+    usage: /xmh [bar|egg|effect give <эффект|hearts> <ник>|skip|reset|pause|resume|bm <...>|phase <name>|end <...>|reload]
     aliases: [xmhard, xmusyahard]
 permissions:
   xmusyahard.admin:
