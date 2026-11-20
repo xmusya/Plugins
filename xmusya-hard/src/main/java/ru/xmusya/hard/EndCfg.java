@@ -26,7 +26,7 @@ public final class EndCfg {
     // --- крепость
     /** Включена ли механика «одна крепость + ломаные порталы в остальных». */
     public boolean strongholdEnabled = true;
-    public int minRadius = 5000;
+    public int minRadius = 0;
     public int maxRadius = 8000;
     /** Радиус поиска комнаты портала вокруг найденной крепости (в чанках). */
     public int scanRadiusChunks = 8;
@@ -75,8 +75,8 @@ public final class EndCfg {
     public int cycleResetMax = 4;
 
     // --- защита портала
-    public int curseHours = 6;
-    public int endBanHours = 6;
+    public int curseHours = 2;
+    public int endBanHours = 2;
 
     // --- внешние острова
     public int outerUnlockDay = 80;
@@ -89,8 +89,10 @@ public final class EndCfg {
     public int voidMinY = 0;
     public int voidPearls = 2;
     public int voidLevitationSeconds = 10;
-    /** Уровень Левитации: 4 = Левитация V (amplifier от 0). */
-    public int voidLevitationAmplifier = 4;
+    /** Уровень Левитации: 14 = Левитация XV (amplifier = уровень − 1). */
+    public int voidLevitationAmplifier = 14;
+    /** Сердца при спасении из пустоты: + даёт, − отнимает, 0 = не трогать. */
+    public int voidHearts = -1;
     public int voidSlowFallingSeconds = 15;
     /** Уровень Плавного падения: 0 = Slow Falling I. */
     public int voidSlowFallingAmplifier = 0;
@@ -113,7 +115,7 @@ public final class EndCfg {
         e.enabled = s.getBoolean("enabled", e.enabled);
 
         e.strongholdEnabled = s.getBoolean("stronghold.enabled", e.strongholdEnabled);
-        e.minRadius = s.getInt("stronghold.min-radius", e.minRadius);
+        e.minRadius = Math.max(0, s.getInt("stronghold.min-radius", e.minRadius));
         e.maxRadius = Math.max(e.minRadius + 500, s.getInt("stronghold.max-radius", e.maxRadius));
         e.scanRadiusChunks = s.getInt("stronghold.scan-radius-chunks", e.scanRadiusChunks);
         e.scanYMin = s.getInt("stronghold.scan-y-min", e.scanYMin);
@@ -164,7 +166,8 @@ public final class EndCfg {
         e.voidMinY = s.getInt("void.min-y", e.voidMinY);
         e.voidPearls = s.getInt("void.pearls", e.voidPearls);
         e.voidLevitationSeconds = s.getInt("void.levitation-seconds", e.voidLevitationSeconds);
-        e.voidLevitationAmplifier = s.getInt("void.levitation-amplifier", e.voidLevitationAmplifier);
+        e.voidLevitationAmplifier = Math.max(0, s.getInt("void.levitation-amplifier", e.voidLevitationAmplifier));
+        e.voidHearts = s.getInt("void.hearts", e.voidHearts);
         e.voidSlowFallingSeconds = s.getInt("void.slow-falling-seconds", e.voidSlowFallingSeconds);
         e.voidSlowFallingAmplifier = s.getInt("void.slow-falling-amplifier", e.voidSlowFallingAmplifier);
 

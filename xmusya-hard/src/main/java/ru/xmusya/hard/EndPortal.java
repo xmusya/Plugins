@@ -228,6 +228,13 @@ public final class EndPortal implements Listener {
         String key = EndState.keyOf(b);
         EndState.Frame f = state.frames.get(key);
         if (f == null) {
+            String ck = b.getWorld().getName() + ":" + (b.getX() >> 4) + ":" + (b.getZ() >> 4);
+            if (plugin.endState != null && plugin.endState.disabledChunks.contains(ck)) {
+                // Чужая крепость — портал сломан, око не подходит
+                Msg.action(p, "Этот портал сломан — око не подходит.");
+                p.playSound(Msg.villagerNo());
+                return;
+            }
             // Рамку не знаем (ещё не просканировали или портал переехал) —
             // запускаем скан ещё раз, чтобы не писать «портал сломан».
             forceScan();

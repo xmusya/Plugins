@@ -102,6 +102,10 @@ public final class EndManager implements Listener {
         Bukkit.getScheduler().runTaskTimer(plugin, this::tickHalfSecond, 10L, 10L);
         // Применение бонусных сердец и баффов
         Bukkit.getScheduler().runTaskTimer(plugin, this::tickSlow, 100L, 100L);
+        // Ночное зрение и прочие баффы портала — каждые 4 сек (чтобы не мигало)
+        Bukkit.getScheduler().runTaskTimer(plugin, this::tickPortalBuffs, 80L, 80L);
+        // Проверка чужих порталов рядом с игроками (раз в 10 сек)
+        Bukkit.getScheduler().runTaskTimer(plugin, this::tickNearbyPortals, 200L, 200L);
     }
 
     // ================================================================== крепость
@@ -501,6 +505,13 @@ public final class EndManager implements Listener {
         if (!isStrongholdChunk(w, chunk.getX(), chunk.getZ())) {
             return;
         }
+        // чанк с нашими рамками не трогаем
+        for (EndState.Frame f : state.frames.values()) {
+            if (f.world.equals(w.getName())
+                    && (f.x >> 4) == chunk.getX() && (f.z >> 4) == chunk.getZ()) {
+                return;
+            }
+        }
         List<Block> frames = scanFrames(w, chunk.getX(), chunk.getZ());
         boolean changed = false;
         for (Block b : frames) {
@@ -804,7 +815,7 @@ public final class EndManager implements Listener {
                     cfg.voidSlowFallingSeconds * 20, cfg.voidSlowFallingAmplifier, true, false, true));
         }, cfg.voidLevitationSeconds * 20L);
 
-        int hearts = 1 + rnd.nextInt(3);
+        int hearts = 1 + rnd.nextInt(0);
         addBonusHearts(p, hearts);
         p.playSound(Msg.click());
         Msg.chat(p, Msg.c("Пустота отпустила вас! ", NamedTextColor.LIGHT_PURPLE)
@@ -837,6 +848,51 @@ public final class EndManager implements Listener {
                     Msg.chat(p, Msg.c("Вам запрещён вход в Энд до "
                             + new java.text.SimpleDateFormat("HH:mm dd.MM")
                             .format(new java.util.Date(ban)) + ".", NamedTextColor.RED));
+                }
+            }
+        }
+    }
+
+    /** Баффы портала: ночное зрение на 15 сек, перевыдача каждые 4 сек. */
+    private void tickPortalBuffs() {
+        if (!cfg.enabled || endPortal() == null) {
+            return;
+        }
+        for (Player p : plugin.players()) {
+            applyPortalBuffs(p);
+        }
+    }
+
+    private EndPortal endPortal() {
+        return plugin.endPortal;
+    }
+
+    /** Раз в 10 сек проверяем крепости в радиусе 100 блоков от игроков. */
+    private void tickNearbyPortals() {
+        if (!cfg.enabled || !cfg.strongholdEnabled || !cfg.disableOtherPortals
+                || !state.strongholdChosen) {
+            return;
+        }
+        int r = Math.max(1, 100 >> 4);
+        for (Player p : plugin.players()) {
+            World w = p.getWorld();
+            if (w.getEnvironment() != World.Environment.NORMAL) {
+                continue;
+            }
+            int pcx = p.getLocation().getBlockX() >> 4;
+            int pcz = p.getLocation().getBlockZ() >> 4;
+            for (int dx = -r; dx <= r; dx++) {
+                for (int dz = -r; dz <= r; dz++) {
+                    int cx = pcx + dx, cz = pcz + dz;
+                    String ck = w.getName() + ":" + cx + ":" + cz;
+                    if (state.disabledChunks.contains(ck)) {
+                        continue;
+                    }
+                    if (Math.abs(cx - (state.strongholdX >> 4)) <= cfg.scanRadiusChunks
+                            && Math.abs(cz - (state.strongholdZ >> 4)) <= cfg.scanRadiusChunks) {
+                        continue; // наша крепость
+                    }
+                    disableOtherPortal(w.getChunkAt(cx, cz), ck);
                 }
             }
         }
@@ -881,7 +937,10 @@ public final class EndManager implements Listener {
         if (attr == null) {
             return;
         }
+        // hearts может быть отрицательным (пустота отнимает сердца)
         double want = (hearts == null ? 0 : hearts) * 2.0;
+        // не опускаем макс. здоровье ниже 2 HP (база 20)
+        want = Math.max(-18.0, want);
         for (AttributeModifier m : attr.getModifiers()) {
             if (m.getKey() != null && m.getKey().equals(heartsKey)) {
                 if (Math.abs(m.getAmount() - want) < 0.001) {
@@ -891,7 +950,7 @@ public final class EndManager implements Listener {
                 break;
             }
         }
-        if (want > 0) {
+        if (want != 0) {
             attr.addModifier(new AttributeModifier(heartsKey, want,
                     AttributeModifier.Operation.ADD_NUMBER));
         }
@@ -934,7 +993,8 @@ public final class EndManager implements Listener {
                 continue;
             }
             int amp = (int) Math.max(0, Math.min(4, e.getValue()[0]));
-            p.addPotionEffect(new PotionEffect(type, 200, amp, true, false, true));
+            int duration = "night_vision".equals(e.getKey()) ? 300 : 200;
+            p.addPotionEffect(new PotionEffect(type, duration, amp, true, false, true));
         }
         if (changed) {
             state.save();

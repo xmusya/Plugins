@@ -328,7 +328,8 @@ end:
     enabled: true
     # Крепость выбирается от спавна: не ближе min-radius и не дальше max-radius.
     # Око и /locate structure stronghold ведут ТОЛЬКО к ней.
-    min-radius: 5000
+    # 0 = без минимального радиуса (берём ближайшую крепость)
+    min-radius: 0
     max-radius: 8000
     # У всех ОСТАЛЬНЫХ крепостей портал ломается (выбивается одна рамка),
     # как только их чанки подгружаются.
@@ -422,7 +423,11 @@ end:
     min-y: 0
     pearls: 2
     levitation-seconds: 10
-    levitation-amplifier: 4      # 4 = Левитация V
+    # Уровень = значение + 1. 14 = Левитация XV (высокая, чтобы долетал)
+    levitation-amplifier: 14
+    # Сердца при спасении из пустоты: -1 = отнимает 1 сердце,
+    # 0 = не трогать, положительное = даёт сердца
+    hearts: -1
     slow-falling-seconds: 15
     slow-falling-amplifier: 0    # 0 = Плавное падение I
 
