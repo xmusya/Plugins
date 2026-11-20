@@ -239,11 +239,56 @@ public final class EndManager implements Listener {
             }
             List<Block> frames = scanFrames(ow, c[0], c[1]);
             if (!frames.isEmpty()) {
-                scanQueue.clear();
-                plugin.endPortal.adoptFrames(frames);
-                return;
+                // Портал 3×3 часто пересекает границу чанка (например, 9 рамок
+                // в одном чанке и 3 в соседнем) — собираем рамки из всех
+                // соседних чанков и соединяем только смежные.
+                List<Block> all = new ArrayList<>(frames);
+                for (int dx = -1; dx <= 1; dx++) {
+                    for (int dz = -1; dz <= 1; dz++) {
+                        if (dx == 0 && dz == 0) {
+                            continue;
+                        }
+                        all.addAll(scanFrames(ow, c[0] + dx, c[1] + dz));
+                    }
+                }
+                List<Block> ring = joinNearby(all, frames);
+                if (ring.size() >= 8) {
+                    scanQueue.clear();
+                    plugin.endPortal.adoptFrames(ring);
+                    return;
+                }
             }
         }
+    }
+
+    /** Соединяем рамки, стоящие вплотную друг к другу (один портал). */
+    private List<Block> joinNearby(List<Block> all, List<Block> seed) {
+        List<Block> accepted = new ArrayList<>(seed);
+        List<Block> pool = new ArrayList<>(all);
+        boolean grew = true;
+        while (grew) {
+            grew = false;
+            Iterator<Block> it = pool.iterator();
+            while (it.hasNext()) {
+                Block b = it.next();
+                if (accepted.contains(b)) {
+                    it.remove();
+                    continue;
+                }
+                for (Block a : accepted) {
+                    if (Math.abs(a.getX() - b.getX()) > 2
+                            || Math.abs(a.getY() - b.getY()) > 2
+                            || Math.abs(a.getZ() - b.getZ()) > 2) {
+                        continue;
+                    }
+                    accepted.add(b);
+                    it.remove();
+                    grew = true;
+                    break;
+                }
+            }
+        }
+        return accepted;
     }
 
     private boolean isStrongholdChunk(World w, int cx, int cz) {
