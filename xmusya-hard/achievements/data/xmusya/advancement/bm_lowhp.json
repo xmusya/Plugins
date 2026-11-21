@@ -1,0 +1,23 @@
+{
+  "display": {
+    "icon": {
+      "id": "minecraft:glistering_melon_slice"
+    },
+    "title": {
+      "text": "На волоске"
+    },
+    "description": {
+      "text": "Встретить рассвет с 3 сердцами или меньше"
+    },
+    "frame": "challenge",
+    "show_toast": true,
+    "announce_to_chat": false,
+    "hidden": false
+  },
+  "criteria": {
+    "impossible": {
+      "trigger": "minecraft:impossible"
+    }
+  },
+  "parent": "xmusya:bm_first"
+}

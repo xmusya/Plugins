@@ -36,6 +36,10 @@ find src/main/java -name '*.java' > build/sources.txt
     -cp "$CP" -d "$OUT" @build/sources.txt
 
 cp -r src/main/resources/* "$OUT"/
+
+# Датапак с ачивками (генерируется tools/gen_achievements.py)
+python3 tools/gen_achievements.py
+"$JDK/bin/jar" --create --file "$OUT/xmusya-hard-achievements.zip" -C achievements .
 "$JDK/bin/jar" --create --file "$JAR" -C "$OUT" .
 
 echo "Собрано: $JAR"

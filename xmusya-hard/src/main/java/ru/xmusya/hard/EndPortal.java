@@ -238,6 +238,9 @@ public final class EndPortal implements Listener {
             EndState.Frame bf = state.frames.get(EndState.keyOf(b));
             if (bf != null && bf.broken) {
                 e.setCancelled(true);
+                if (plugin.achievements != null) {
+                    plugin.achievements.onSecretFrame(e.getPlayer());
+                }
                 if (e.getAction() == Action.RIGHT_CLICK_BLOCK) {
                     repairBrokenFrame(e.getPlayer(), b, bf);
                 }
@@ -296,8 +299,11 @@ public final class EndPortal implements Listener {
         refreshDisplays(f);
         reward(p);
         checkHearts(p);
+        if (plugin.achievements != null) {
+            plugin.achievements.onFrameFill(p);
+        }
         if (state.filledCount() >= state.frames.size()) {
-            openPortal();
+            openPortal(p);
         }
         state.save();
     }
@@ -348,7 +354,10 @@ public final class EndPortal implements Listener {
     }
 
     /** Собираем портал вручную (ванильный генератор не срабатывает от setEye). */
-    private void openPortal() {
+    private void openPortal(Player p) {
+        if (plugin.achievements != null) {
+            plugin.achievements.onPortalOpen(p);
+        }
         int minX = Integer.MAX_VALUE, maxX = Integer.MIN_VALUE;
         int minZ = Integer.MAX_VALUE, maxZ = Integer.MIN_VALUE;
         int y = Integer.MIN_VALUE;
@@ -392,8 +401,8 @@ public final class EndPortal implements Listener {
             }
         }, 5L);
         Msg.broadcast("Портал в Энд открыт!", NamedTextColor.LIGHT_PURPLE);
-        for (Player p : Bukkit.getOnlinePlayers()) {
-            p.playSound(Msg.witherSpawn());
+        for (Player pl : Bukkit.getOnlinePlayers()) {
+            pl.playSound(Msg.witherSpawn());
         }
     }
 
@@ -988,6 +997,9 @@ public final class EndPortal implements Listener {
                 + ") и получил мощный бафф на " + cfg.repairBuffDays + " дн.!",
                 NamedTextColor.LIGHT_PURPLE);
         p.playSound(Msg.click());
+        if (plugin.achievements != null) {
+            plugin.achievements.onRepair(p, f.repairTier.equals("ultra"));
+        }
         // Рамка пустая — дальше игрок вставляет око обычным способом
     }
 

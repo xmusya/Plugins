@@ -126,6 +126,12 @@ public final class Menu implements Listener {
                         "/xmh give hp <ник>",
                         "Остаток времени сохраняется")));
 
+        if (plugin.achievements != null) {
+            int have = plugin.achievements.grantedOf(p).size();
+            inv.setItem(41, btn(Material.GOLDEN_APPLE, "Достижения", "ach",
+                    "Получено " + have + " / " + plugin.achievements.total()));
+        }
+
         if (!admin) {
             inv.setItem(0, btn(Material.BARRIER, "Закрыть", "close", null));
             p.openInventory(inv);
@@ -215,6 +221,7 @@ public final class Menu implements Listener {
             case 38 -> "xmh end status";
             case 39 -> "xmh end scan";
             case 40 -> "xmh end reset";
+            case 41 -> "xmh ach";
             case 42 -> "xmh reload";
 
             default -> "";

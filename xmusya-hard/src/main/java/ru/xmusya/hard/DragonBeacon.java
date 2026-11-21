@@ -219,6 +219,9 @@ public final class DragonBeacon implements Listener {
         b.z = below.getZ();
         beacons.put(b.key(), b);
         save();
+        if (plugin.achievements != null) {
+            plugin.achievements.onBeacon(e.getPlayer(), pyramidLevel(below), false, "");
+        }
         Msg.chat(e.getPlayer(), "Драконий маяк создан! ПКМ по яйцу — настройка эффектов.");
         e.getPlayer().playSound(e.getPlayer().getLocation(), "block.beacon.activate", 1f, 1f);
     }
@@ -262,6 +265,9 @@ public final class DragonBeacon implements Listener {
                 breakEgg(e.getPlayer(), b);
             }
             return;
+        }
+        if (plugin.achievements != null) {
+            plugin.achievements.onSecretEgg(e.getPlayer());
         }
         // ПКМ по яйцу — свой GUI, и никакой телепортации яйца
         if (b.getType() == Material.DRAGON_EGG && e.getAction() == Action.RIGHT_CLICK_BLOCK) {
@@ -569,6 +575,9 @@ public final class DragonBeacon implements Listener {
             it.setItemMeta(m);
             inv.setItem(slot, it);
         }
+        if (plugin.achievements != null) {
+            plugin.achievements.onBeacon(p, level, false, "");
+        }
         p.openInventory(inv);
     }
 
@@ -653,6 +662,12 @@ public final class DragonBeacon implements Listener {
         }
         validateSelection(b, level);
         save();
+        if (plugin.achievements != null) {
+            Fx chosen = fx(b.primary.isEmpty() ? b.secondary : b.primary);
+            plugin.achievements.onBeacon(p, level,
+                    chosen != null && chosen.exclusive,
+                    chosen == null ? "" : chosen.id);
+        }
         p.playSound(p.getLocation(), "ui.button.click", 0.6f, 1.4f);
         open(p, b);
     }

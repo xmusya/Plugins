@@ -132,6 +132,7 @@ public final class XmusyaHard extends JavaPlugin implements Listener {
     public EndPortal endPortal;
     public DragonBeacon dragonBeacon;
     public GuideBook guideBook;
+    public Achievements achievements;
     /** true, если обнаружено пересоздание мира (сбрасываем прогресс). */
     public boolean wipeDetected = false;
 
@@ -206,6 +207,15 @@ public final class XmusyaHard extends JavaPlugin implements Listener {
         // Книга-гайд
         guideBook = new GuideBook(this);
         getServer().getPluginManager().registerEvents(guideBook, this);
+        // Достижения (датапак ставится в world/datapacks)
+        achievements = new Achievements(this);
+        getServer().getPluginManager().registerEvents(achievements, this);
+        achievements.start();
+        Bukkit.getScheduler().runTaskTimer(this, () -> {
+            if (achievements != null) {
+                achievements.tick();
+            }
+        }, 600L, 600L);
         // Меню /xmh
         getServer().getPluginManager().registerEvents(new Menu(), this);
 
@@ -247,6 +257,9 @@ public final class XmusyaHard extends JavaPlugin implements Listener {
         }
         if (dragonBeacon != null) {
             dragonBeacon.save();
+        }
+        if (achievements != null) {
+            achievements.save();
         }
         if (mainBar != null) {
             for (Player p : Bukkit.getOnlinePlayers()) {
@@ -726,6 +739,11 @@ public final class XmusyaHard extends JavaPlugin implements Listener {
         growBorder(day);
         applyRules();
         checkPhase();
+        if (achievements != null) {
+            for (Player p : players()) {
+                achievements.onDay(p);
+            }
+        }
         if (endPortal != null) {
             endPortal.onNewDay(day);
         }
@@ -786,6 +804,11 @@ public final class XmusyaHard extends JavaPlugin implements Listener {
                 rewardBuff(pl);
             }
         }
+        if (achievements != null) {
+            for (Player pl : players()) {
+                achievements.check(pl);
+            }
+        }
     }
 
     public void announcePhase(int p) {
@@ -835,6 +858,11 @@ public final class XmusyaHard extends JavaPlugin implements Listener {
         if (p >= 3) {
             for (Player pl : players()) {
                 rewardBuff(pl);
+            }
+        }
+        if (achievements != null) {
+            for (Player pl : players()) {
+                achievements.check(pl);
             }
         }
         Msg.broadcast("Фаза установлена администратором: " + target.name
@@ -1071,6 +1099,9 @@ public final class XmusyaHard extends JavaPlugin implements Listener {
             }
         }
         for (Player p : players()) {
+            if (achievements != null) {
+                achievements.onBloodMoonSurvived(p, p.getLocation().getY(), p.getHealth());
+            }
             bmSurvived.merge(p.getUniqueId(), 1, Integer::sum);
             p.giveExpLevels(3);
             p.addPotionEffect(new PotionEffect(PotionEffectType.SATURATION, 100, 1, true, false, true));
@@ -1395,11 +1426,21 @@ public final class XmusyaHard extends JavaPlugin implements Listener {
     public void onDeath(PlayerDeathEvent event) {
         Player p = event.getEntity();
         deaths.merge(p.getUniqueId(), 1, Integer::sum);
+        if (achievements != null) {
+            achievements.onDeath(p);
+        }
         saveState();
     }
 
     @EventHandler(priority = EventPriority.HIGHEST)
     public void onBedEnter(PlayerBedEnterEvent event) {
+        if (achievements != null && !isBot(event.getPlayer())) {
+            if (bmActive && !bmPaused && !isBmExempt(event.getPlayer())) {
+                achievements.onSecretSleepBm(event.getPlayer());
+            } else {
+                achievements.onSleep(event.getPlayer());
+            }
+        }
         if (!bmActive || bmPaused || isBot(event.getPlayer())
                 || isBmExempt(event.getPlayer())) {
             return;
@@ -1543,6 +1584,46 @@ public final class XmusyaHard extends JavaPlugin implements Listener {
                 return true;
             }
             guideBook.reloadAndGive(target);
+            return true;
+        }
+
+        // /xmh ach [list|grant <ник> <id>|reset]
+        if (sub.equals("ach") || sub.equals("achieve") || sub.equals("achievements")) {
+            if (achievements == null) {
+                sender.sendMessage("Достижения выключены.");
+                return true;
+            }
+            boolean admin = !(sender instanceof Player) || sender.isOp()
+                    || sender.hasPermission("xmusyahard.admin");
+            if (args.length >= 2 && admin && args[1].equalsIgnoreCase("grant")) {
+                if (args.length < 4) {
+                    sender.sendMessage("Использование: /xmh ach grant <ник> <id>");
+                    return true;
+                }
+                Player t = Bukkit.getPlayerExact(args[2]);
+                if (t == null) {
+                    sender.sendMessage("Игрок не в сети.");
+                    return true;
+                }
+                achievements.grantCommand(t, args[3]);
+                return true;
+            }
+            if (args.length >= 2 && admin && args[1].equalsIgnoreCase("reset")) {
+                achievements.resetAll();
+                sender.sendMessage("Все достижения сброшены.");
+                return true;
+            }
+            Player p = sender instanceof Player ? (Player) sender : null;
+            if (p == null) {
+                sender.sendMessage("Всего достижений: " + achievements.total());
+                for (String id : achievements.allIds()) {
+                    sender.sendMessage("  " + id);
+                }
+                return true;
+            }
+            int have = achievements.grantedOf(p).size();
+            Msg.chat(p, Msg.c("Достижения: ", NamedTextColor.GOLD)
+                    .append(Msg.bold(have + " / " + achievements.total(), NamedTextColor.YELLOW)));
             return true;
         }
 
@@ -1693,6 +1774,9 @@ public final class XmusyaHard extends JavaPlugin implements Listener {
                 return;
             }
             heartsTransfer(from, to, 1);
+            if (achievements != null) {
+                achievements.onGive(from, true);
+            }
             Msg.chat(from, Msg.c("Вы передали ", NamedTextColor.GRAY)
                     .append(Msg.c("1 сердце", NamedTextColor.RED))
                     .append(Msg.c(" игроку " + to.getName() + ".", NamedTextColor.GRAY)));
@@ -1737,6 +1821,9 @@ public final class XmusyaHard extends JavaPlugin implements Listener {
         from.removePotionEffect(type);
         to.addPotionEffect(new PotionEffect(type, left * 20, mine.getAmplifier(),
                 true, true, true));
+        if (achievements != null) {
+            achievements.onGive(from, false);
+        }
         if (buff != null && endManager != null) {
             endManager.giveBuff(to, buffKey, buff);
         }

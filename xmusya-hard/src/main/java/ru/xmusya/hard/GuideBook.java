@@ -164,6 +164,9 @@ public final class GuideBook implements Listener {
         } catch (RuntimeException ignored) {
         }
         Msg.chat(p, "Вам выдана книга-гайд. Откройте её в инвентаре.");
+        if (plugin.achievements != null) {
+            plugin.achievements.onGuide(p);
+        }
         return true;
     }
 

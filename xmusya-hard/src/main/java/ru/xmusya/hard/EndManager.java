@@ -900,6 +900,9 @@ public final class EndManager implements Listener {
                     cfg.voidSlowFallingSeconds * 20, cfg.voidSlowFallingAmplifier, true, false, true));
         }, cfg.voidLevitationSeconds * 20L);
 
+        if (plugin.achievements != null) {
+            plugin.achievements.onVoidRescue(p);
+        }
         int hearts = 1 + rnd.nextInt(0);
         addBonusHearts(p, hearts);
         p.playSound(Msg.click());
@@ -1036,6 +1039,9 @@ public final class EndManager implements Listener {
         p.addPotionEffect(new PotionEffect(PotionEffectType.MINING_FATIGUE, 60, 1, true, false, true));
         Msg.chat(p, Msg.c(reason + " Проклятие на " + cfg.curseHours + " ч и запрет входа в Энд.",
                 NamedTextColor.DARK_RED));
+        if (plugin.achievements != null) {
+            plugin.achievements.onCurse(p);
+        }
     }
 
     public boolean isCursed(Player p) {
@@ -1244,6 +1250,9 @@ public final class EndManager implements Listener {
         }
         if (!p.isBlocking()) {
             return;
+        }
+        if (plugin.achievements != null) {
+            plugin.achievements.onShieldBlock(p);
         }
         long now = System.currentTimeMillis();
         Long last = lastDragonHit.get(p.getUniqueId());
