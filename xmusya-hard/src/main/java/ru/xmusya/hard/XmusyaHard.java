@@ -20,6 +20,7 @@ import org.bukkit.entity.Entity;
 import org.bukkit.entity.EntityType;
 import org.bukkit.entity.Item;
 import org.bukkit.entity.LivingEntity;
+import org.bukkit.entity.Mob;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
@@ -88,6 +89,18 @@ public final class XmusyaHard extends JavaPlugin implements Listener {
     public int bmHeightY = 120;
     /** С какого дня в КЛ появляются визер-скелеты, утопленники и вексы. */
     public int bmEndgameDay = 60;
+    /** Сколько мобов за одну волну (каждые 100 тиков) вокруг игрока. */
+    public int bmSpawnPerWave = 3;
+    /** Предел враждебных мобов в радиусе 16 блоков от игрока. */
+    public int bmMaxHostiles = 28;
+    /** Попыток найти место для спавна за одну попытку. */
+    public int bmSpawnAttempts = 16;
+    /** Радиус поиска места спавна (блоки). */
+    public int bmSpawnRadius = 24;
+    /** Сколько мобов спавнится залпом сразу при старте КЛ. */
+    public int bmBurstOnStart = 10;
+    /** Анти-кемп (вексы/фантомы) действует и на игроков-исключений (шахта/высота). */
+    public boolean bmExemptBlocksAntiCamp = false;
     /** Игроки, спрятанные в шахте/на высоте на момент старта КЛ. */
     public final Set<UUID> bmExempt = new HashSet<>();
     private NamespacedKey bmWitherKey;
@@ -258,6 +271,12 @@ public final class XmusyaHard extends JavaPlugin implements Listener {
         bmMineY = getConfig().getInt("bloodmoon.mine-y", 40);
         bmHeightY = getConfig().getInt("bloodmoon.height-y", 120);
         bmEndgameDay = getConfig().getInt("bloodmoon.endgame-mobs-day", 60);
+        bmSpawnPerWave = Math.max(1, getConfig().getInt("bloodmoon.spawn-per-wave", 3));
+        bmMaxHostiles = Math.max(4, getConfig().getInt("bloodmoon.max-hostiles-nearby", 28));
+        bmSpawnAttempts = Math.max(4, getConfig().getInt("bloodmoon.spawn-attempts", 16));
+        bmSpawnRadius = Math.max(8, getConfig().getInt("bloodmoon.spawn-radius", 24));
+        bmBurstOnStart = Math.max(0, getConfig().getInt("bloodmoon.burst-on-start", 10));
+        bmExemptBlocksAntiCamp = getConfig().getBoolean("bloodmoon.exempt-blocks-anti-camp", false);
         starterBuffsUntilDay = getConfig().getInt("starter-buffs-until-day", 4);
         Msg.setPrefix(getConfig().getString("prefix", "&c[XMH] "));
 
@@ -867,6 +886,7 @@ public final class XmusyaHard extends JavaPlugin implements Listener {
             if (!isBmExempt(p)) {
                 bloodMoonProbe(p);
             }
+            retargetBmFlyers(p);
         }
     }
 
@@ -902,30 +922,53 @@ public final class XmusyaHard extends JavaPlugin implements Listener {
             return;
         }
         for (Player p : players()) {
-            if (isBmExempt(p)) {
+            if (!bmExemptBlocksAntiCamp && isBmExempt(p)) {
                 continue;
             }
             double y = p.getLocation().getY();
             if (y < bmMineY || y > bmHeightY) {
                 Msg.action(p, "Глубина и высота не скроют вас от ночной охоты!");
-                Location loc = randomOutdoorLocation(p.getWorld(), p.getLocation(), 6, 10);
-                if (loc == null) {
-                    loc = p.getLocation().clone().add(rnd.nextInt(11) - 5, 1, rnd.nextInt(11) - 5);
-                }
                 if (y < bmMineY) {
-                    // в глубине — вексы
-                    Entity e = p.getWorld().spawnEntity(loc, EntityType.VEX);
-                    e.addScoreboardTag("xh_scaled");
-                    e.addScoreboardTag("xh_bm_vex");
+                    // в глубине — вексы прямо рядом с игроком
+                    for (int i = 0; i < 2; i++) {
+                        Location loc = findBmSpawn(p, true);
+                        if (loc != null) {
+                            spawnBmMob(p, loc, EntityType.VEX);
+                        }
+                    }
+                    // и обычная живность по пещере
+                    for (int i = 0; i < 2; i++) {
+                        Location loc = findBmSpawn(p, false);
+                        if (loc != null) {
+                            spawnBmMob(p, loc, pickBmType(currentDay >= bmEndgameDay));
+                        }
+                    }
                 } else {
-                    // высоко — фантомы на 10–15 блоков выше игрока
-                    Location spawnAt = p.getLocation().clone().add(
-                            rnd.nextInt(9) - 4, 10 + rnd.nextInt(6), rnd.nextInt(9) - 4);
-                    Entity e = p.getWorld().spawnEntity(spawnAt, EntityType.PHANTOM);
-                    e.addScoreboardTag("xh_scaled");
+                    // высоко — фантомы на 10–15 блоков выше игрока, сразу с целью
+                    for (int i = 0; i < 3; i++) {
+                        Location spawnAt = findPhantomSpot(p);
+                        if (spawnAt != null) {
+                            spawnBmMob(p, spawnAt, EntityType.PHANTOM);
+                        }
+                    }
                 }
             }
         }
+    }
+
+    /** Точка для фантома: 10–15 блоков выше игрока, в воздухе. */
+    private Location findPhantomSpot(Player p) {
+        for (int i = 0; i < 12; i++) {
+            Location at = p.getLocation().clone().add(
+                    rnd.nextInt(11) - 5, 10 + rnd.nextInt(6), rnd.nextInt(11) - 5);
+            if (at.getBlockY() >= at.getWorld().getMaxHeight() - 2) {
+                at.setY(at.getWorld().getMaxHeight() - 3);
+            }
+            if (at.getBlock().isEmpty() && at.clone().add(0, 1, 0).getBlock().isEmpty()) {
+                return at;
+            }
+        }
+        return null;
     }
 
     private boolean canSeeSky(Player p) {
@@ -989,6 +1032,14 @@ public final class XmusyaHard extends JavaPlugin implements Listener {
                 bmExempt.add(p.getUniqueId());
             }
             p.playSound(Msg.witherSpawn());
+            // Залп при старте: сразу «растрел» вокруг игрока
+            for (int i = 0; i < bmBurstOnStart; i++) {
+                Location loc = findBmSpawn(p, i % 4 == 0);
+                if (loc == null) {
+                    continue;
+                }
+                spawnBmMob(p, loc, pickBmType(currentDay >= bmEndgameDay));
+            }
         }
         Msg.broadcastRaw(Component.text("[КРОВАВАЯ ЛУНА] ", NamedTextColor.DARK_RED, TextDecoration.BOLD)
                 .append(Component.text("Наступила кровавая ночь! Сон и невидимость заблокированы, "
@@ -1011,8 +1062,8 @@ public final class XmusyaHard extends JavaPlugin implements Listener {
         bmExempt.clear();
         for (World world : Bukkit.getWorlds()) {
             for (Entity e : world.getEntities()) {
-                if (e.getScoreboardTags().contains("xh_bm_vex")) {
-                    e.remove(); // вексы КЛ деспавнятся к рассвету
+                if (e.getScoreboardTags().contains("xh_bm_flyer")) {
+                    e.remove(); // вексы и фантомы КЛ деспавнятся к рассвету
                     continue;
                 }
                 e.removeScoreboardTag("bm_checked");
@@ -1068,55 +1119,115 @@ public final class XmusyaHard extends JavaPlugin implements Listener {
 
     private void bloodMoonProbe(Player p) {
         World w = p.getWorld();
-        int hostiles = 0;
-        for (Entity e : w.getNearbyEntities(p.getLocation(), 16, 16, 16)) {
-            if (e instanceof LivingEntity le && isScalable(le)) {
-                hostiles++;
-            }
-        }
-        if (hostiles >= 15) {
+        int hostiles = countBmHostiles(p);
+        if (hostiles >= bmMaxHostiles) {
             return;
         }
-        for (int i = 0; i < 6; i++) {
+        boolean endgame = currentDay >= bmEndgameDay;
+        for (int n = 0; n < bmSpawnPerWave && hostiles < bmMaxHostiles; n++) {
+            EntityType type = pickBmType(endgame);
+            Location loc = findBmSpawn(p, type == EntityType.VEX);
+            if (loc == null) {
+                continue;
+            }
+            spawnBmMob(p, loc, type);
+            hostiles++;
+        }
+    }
+
+    /** Фантомы/вексы КЛ должны видеть цель — иначе они просто летают рядом. */
+    private void retargetBmFlyers(Player p) {
+        for (Entity e : p.getWorld().getNearbyEntities(p.getLocation(), 48, 48, 48)) {
+            if (!(e instanceof Mob mob) || !mob.isValid()) {
+                continue;
+            }
+            boolean flyer = e.getType() == EntityType.PHANTOM || e.getType() == EntityType.VEX;
+            if (!flyer || !e.getScoreboardTags().contains("xh_bm_spawned")) {
+                continue;
+            }
+            LivingEntity target = mob.getTarget();
+            if (target == null || !target.isValid() || target.isDead()
+                    || !target.getWorld().equals(mob.getWorld())) {
+                mob.setTarget(p);
+            }
+        }
+    }
+
+    private int countBmHostiles(Player p) {
+        int n = 0;
+        for (Entity e : p.getWorld().getNearbyEntities(p.getLocation(), 16, 16, 16)) {
+            if (e.getScoreboardTags().contains("xh_bm_flyer")) {
+                n++;
+            } else if (e instanceof LivingEntity le && isScalable(le)) {
+                n++;
+            }
+        }
+        return n;
+    }
+
+    private EntityType pickBmType(boolean endgame) {
+        if (!endgame) {
+            return switch (rnd.nextInt(3)) {
+                case 0 -> EntityType.ZOMBIE;
+                case 1 -> EntityType.SKELETON;
+                default -> EntityType.SPIDER;
+            };
+        }
+        return switch (rnd.nextInt(6)) {
+            case 0 -> EntityType.ZOMBIE;
+            case 1 -> EntityType.SKELETON;
+            case 2 -> EntityType.DROWNED;
+            case 3 -> EntityType.WITHER_SKELETON;
+            case 4 -> EntityType.VEX;
+            default -> EntityType.SPIDER;
+        };
+    }
+
+    /** Ищет место рядом с игроком: для вексов — вплотную, для остальных — 10..radius. */
+    private Location findBmSpawn(Player p, boolean vex) {
+        World w = p.getWorld();
+        int min = vex ? 3 : 10;
+        int max = Math.max(min + 2, vex ? 6 : bmSpawnRadius);
+        for (int i = 0; i < bmSpawnAttempts; i++) {
             double angle = rnd.nextDouble() * Math.PI * 2.0;
-            double dist = 10 + rnd.nextDouble() * 14.0;
+            double dist = min + rnd.nextDouble() * (max - min);
             int x = p.getLocation().getBlockX() + (int) Math.round(Math.cos(angle) * dist);
             int z = p.getLocation().getBlockZ() + (int) Math.round(Math.sin(angle) * dist);
-            int y = p.getLocation().getBlockY() + rnd.nextInt(5) - 2;
+            // у поверхности — по высоте земли, в шахте/пещере — рядом с игроком
+            int y = p.getLocation().getBlockY() + rnd.nextInt(7) - 3;
             Location loc = new Location(w, x + 0.5, y, z + 0.5);
-            if (!loc.getBlock().isEmpty() || loc.getBlock().getLightLevel() > 8) {
+            if (!loc.getBlock().isEmpty() || loc.getBlock().getLightLevel() > 9) {
                 continue;
             }
-            if (loc.clone().subtract(0, 1, 0).getBlock().isEmpty()) {
+            if (!loc.clone().add(0, 1, 0).getBlock().isEmpty()) {
                 continue;
             }
-            boolean endgame = currentDay >= bmEndgameDay;
-            EntityType type;
-            if (endgame) {
-                type = switch (rnd.nextInt(5)) {
-                    case 0 -> EntityType.ZOMBIE;
-                    case 1 -> EntityType.SKELETON;
-                    case 2 -> EntityType.DROWNED;
-                    case 3 -> EntityType.WITHER_SKELETON;
-                    default -> EntityType.VEX;
-                };
-            } else {
-                type = switch (rnd.nextInt(3)) {
-                    case 0 -> EntityType.ZOMBIE;
-                    case 1 -> EntityType.SKELETON;
-                    default -> EntityType.SPIDER;
-                };
+            return loc;
+        }
+        // подстраховка: прямо рядом с игроком
+        Location near = p.getLocation().clone().add(rnd.nextInt(5) - 2, 1, rnd.nextInt(5) - 2);
+        return near.getBlock().isEmpty() ? near : null;
+    }
+
+    private void spawnBmMob(Player p, Location loc, EntityType type) {
+        Entity spawned = p.getWorld().spawnEntity(loc, type);
+        spawned.addScoreboardTag("xh_bm_spawned");
+        if (type == EntityType.VEX || type == EntityType.PHANTOM) {
+            spawned.addScoreboardTag("xh_bm_flyer");
+        }
+        if (type == EntityType.VEX) {
+            spawned.addScoreboardTag("xh_bm_vex");
+        }
+        if (type == EntityType.WITHER_SKELETON && bmWitherKey != null) {
+            spawned.getPersistentDataContainer().set(bmWitherKey,
+                    org.bukkit.persistence.PersistentDataType.BYTE, (byte) 1);
+        }
+        if (spawned instanceof Mob mob) {
+            mob.setRemoveWhenFarAway(false);
+            // Летающие моблы (фантом/векса) сами не всегда находят цель — тыкаем пальцем
+            if (type == EntityType.PHANTOM || type == EntityType.VEX) {
+                mob.setTarget(p);
             }
-            Entity spawned = w.spawnEntity(loc, type);
-            spawned.addScoreboardTag("xh_bm_spawned");
-            if (type == EntityType.VEX) {
-                spawned.addScoreboardTag("xh_bm_vex");
-            }
-            if (type == EntityType.WITHER_SKELETON && bmWitherKey != null) {
-                spawned.getPersistentDataContainer().set(bmWitherKey,
-                        org.bukkit.persistence.PersistentDataType.BYTE, (byte) 1);
-            }
-            return;
         }
     }
 
