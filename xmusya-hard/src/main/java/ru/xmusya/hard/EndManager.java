@@ -1048,6 +1048,36 @@ public final class EndManager implements Listener {
         applyPortalBuffs(p);
     }
 
+    /**
+     * Забирает у игрока постоянный бафф (например, за починку рамки).
+     * Возвращает {amplifier, until} или null, если баффа нет.
+     */
+    public long[] takeBuff(Player p, String effect) {
+        Map<String, long[]> map = state.buffs.get(p.getUniqueId());
+        if (map == null) {
+            return null;
+        }
+        long[] cur = map.remove(effect);
+        if (map.isEmpty()) {
+            state.buffs.remove(p.getUniqueId());
+        }
+        if (cur != null) {
+            state.save();
+        }
+        return cur;
+    }
+
+    /** Выдаёт бафф с готовым сроком (перенос эффекта между игроками). */
+    public void giveBuff(Player p, String effect, long[] raw) {
+        if (raw == null || raw[1] <= System.currentTimeMillis()) {
+            return;
+        }
+        state.buffs.computeIfAbsent(p.getUniqueId(), k -> new HashMap<>())
+                .put(effect, raw);
+        state.save();
+        applyPortalBuffs(p);
+    }
+
     private void applyPortalBuffs(Player p) {
         Map<String, long[]> map = state.buffs.get(p.getUniqueId());
         if (map == null || map.isEmpty()) {

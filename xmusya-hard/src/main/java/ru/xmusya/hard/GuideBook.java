@@ -1,6 +1,7 @@
 package ru.xmusya.hard;
 
 import net.kyori.adventure.text.Component;
+import net.kyori.adventure.text.format.NamedTextColor;
 import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer;
 import org.bukkit.Material;
 import org.bukkit.NamespacedKey;
@@ -126,6 +127,32 @@ public final class GuideBook implements Listener {
         if (book == null) {
             return false;
         }
+        // Взамен старой книги (если игрок таскает её с собой) — book and quill.
+        // Метаданные страниц из неё переносятся, чтобы текст не терялся.
+        for (ItemStack cur : p.getInventory().getContents()) {
+            if (cur == null) {
+                continue;
+            }
+            if (cur.getType() == Material.WRITTEN_BOOK
+                    && cur.hasItemMeta()
+                    && cur.getItemMeta() instanceof BookMeta bm
+                    && legacy.serialize(bm.title()).equals(legacy.serialize(
+                            legacy.deserialize(title)))) {
+                ItemStack quill = replaceWithQuill(cur, bm);
+                if (quill != null) {
+                    p.getInventory().remove(cur);
+                    Map<Integer, ItemStack> rest = p.getInventory().addItem(quill);
+                    if (!rest.isEmpty()) {
+                        for (ItemStack r : rest.values()) {
+                            p.getWorld().dropItemNaturally(p.getLocation(), r);
+                        }
+                    }
+                    Msg.chat(p, "Старая книга-гайд заменена на «Книгу и перо»"
+                            + " (можно редактировать).", NamedTextColor.GRAY);
+                    break;
+                }
+            }
+        }
         Map<Integer, ItemStack> left = p.getInventory().addItem(book);
         if (!left.isEmpty() && dropIfFull) {
             for (ItemStack rest : left.values()) {
@@ -155,6 +182,23 @@ public final class GuideBook implements Listener {
         meta.pages(comps);
         item.setItemMeta(meta);
         return item;
+    }
+
+    /** Превращает нередактируемую книгу-гайд в «Книгу и перо» с теми же страницами. */
+    private static ItemStack replaceWithQuill(ItemStack old, BookMeta oldMeta) {
+        ItemStack quill = new ItemStack(Material.WRITABLE_BOOK, 1);
+        BookMeta qm = (BookMeta) quill.getItemMeta();
+        if (qm == null) {
+            return null;
+        }
+        qm.title(oldMeta.hasTitle() ? oldMeta.title() : null);
+        qm.author(oldMeta.hasAuthor() ? oldMeta.author() : null);
+        List<net.kyori.adventure.text.Component> pages = oldMeta.pages();
+        if (!pages.isEmpty()) {
+            qm.pages(pages);
+        }
+        quill.setItemMeta(qm);
+        return quill;
     }
 
     /** Для консольной команды /xmh guide <ник> (перечитать и выдать заново). */

@@ -1619,9 +1619,16 @@ public final class XmusyaHard extends JavaPlugin implements Listener {
             Msg.chat(from, "Этот эффект отрицательный — передавать нельзя.", NamedTextColor.RED);
             return;
         }
+        // Постоянный бафф (за починку рамки и т.п.) переносим вместе с эффектом,
+        // иначе он мгновенно вернётся бывшему владельцу (EndManager перевыдаёт).
+        String buffKey = type.getKey().getKey();
+        long[] buff = endManager == null ? null : endManager.takeBuff(from, buffKey);
         from.removePotionEffect(type);
         to.addPotionEffect(new PotionEffect(type, left * 20, mine.getAmplifier(),
                 true, true, true));
+        if (buff != null && endManager != null) {
+            endManager.giveBuff(to, buffKey, buff);
+        }
         Msg.chat(from, Msg.c("Вы передали ", NamedTextColor.GRAY)
                 .append(Msg.c(prettyEffect(type), NamedTextColor.GREEN))
                 .append(Msg.c(" игроку " + to.getName() + ".", NamedTextColor.GRAY)));

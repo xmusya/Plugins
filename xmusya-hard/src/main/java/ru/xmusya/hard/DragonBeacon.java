@@ -82,8 +82,7 @@ public final class DragonBeacon implements Listener {
                     PotionEffectType.DOLPHINS_GRACE),
             new Fx("luck", "Удача", Material.RABBIT_FOOT, 1, false, PotionEffectType.LUCK),
             new Fx("saturation", "Насыщение", Material.CAKE, 1, true, PotionEffectType.SATURATION),
-            new Fx("immunity", "Неуязвимость", Material.MAGMA_CREAM, 1, true, null),
-            new Fx("aura_poison", "Защита (яд мобам)", Material.SPIDER_EYE, 1, true, null)
+            new Fx("immunity", "Неуязвимость", Material.MAGMA_CREAM, 1, true, null)
     );
 
     private static Fx fx(String id) {
@@ -127,7 +126,8 @@ public final class DragonBeacon implements Listener {
         }
     }
 
-    private static final int[] SLOTS = {10, 11, 12, 13, 14, 15, 19, 20, 21, 22, 23, 24};
+    /** Слоты под эффекты: 3 + 5 + 3 (всего 11 эффектов). */
+    private static final int[] SLOTS = {10, 11, 12, 19, 20, 21, 22, 23, 28, 29, 30};
 
     private final XmusyaHard plugin;
     private final Map<String, Beacon> beacons = new LinkedHashMap<>();
@@ -147,6 +147,7 @@ public final class DragonBeacon implements Listener {
 
     // ------------------------------------------------------------------ файл
     private void load() {
+        beacons.clear();
         if (!file.isFile()) {
             return;
         }
@@ -160,6 +161,13 @@ public final class DragonBeacon implements Listener {
             b.primary = y.getString(key + ".primary", "");
             b.secondary = y.getString(key + ".secondary", "");
             b.primaryII = y.getBoolean(key + ".primary-ii", false);
+            if (fx(b.primary) == null) {
+                b.primary = "";
+                b.primaryII = false;
+            }
+            if (fx(b.secondary) == null || b.secondary.equals(b.primary)) {
+                b.secondary = "";
+            }
             if (b.world.isEmpty()) {
                 continue;
             }
@@ -246,6 +254,15 @@ public final class DragonBeacon implements Listener {
                 return;
             }
         }
+        // ЛКМ по яйцу на маяке — сломать и выбить яйцо (без ванильного телепорта)
+        if (b.getType() == Material.DRAGON_EGG && e.getAction() == Action.LEFT_CLICK_BLOCK) {
+            Block below = b.getRelative(0, -1, 0);
+            if (below.getType() == Material.BEACON) {
+                e.setCancelled(true);
+                breakEgg(e.getPlayer(), b);
+            }
+            return;
+        }
         // ПКМ по яйцу — свой GUI, и никакой телепортации яйца
         if (b.getType() == Material.DRAGON_EGG && e.getAction() == Action.RIGHT_CLICK_BLOCK) {
             Block below = b.getRelative(0, -1, 0);
@@ -274,6 +291,12 @@ public final class DragonBeacon implements Listener {
             st = beaconAt(b);
         } else if (b.getType() == Material.DRAGON_EGG) {
             st = beaconAt(b.getRelative(0, -1, 0));
+            if (st != null) {
+                // Яйцо на маяке ломается обычным способом и выпадает предметом
+                e.setCancelled(true);
+                breakEgg(e.getPlayer(), b);
+                return;
+            }
         }
         if (st == null) {
             return;
@@ -282,6 +305,24 @@ public final class DragonBeacon implements Listener {
         save();
         clearEffects(st);
         Msg.chat(e.getPlayer(), "Драконий маяк разрушен, эффекты сняты.", NamedTextColor.GRAY);
+    }
+
+    /** Ломает яйцо дракона Драконьего маяка и выдаёт его предметом. */
+    private void breakEgg(Player p, Block egg) {
+        Block below = egg.getRelative(0, -1, 0);
+        Beacon st = beaconAt(below);
+        if (st != null) {
+            beacons.remove(st.key());
+            save();
+            clearEffects(st);
+        }
+        egg.setType(Material.AIR, false);
+        egg.getWorld().dropItemNaturally(egg.getLocation().add(0.5, 0.3, 0.5),
+                new ItemStack(Material.DRAGON_EGG));
+        if (p != null) {
+            p.playSound(p.getLocation(), "block.stone.break", 1f, 0.8f);
+            Msg.chat(p, "Драконий маяк разрушен: яйцо выпало.", NamedTextColor.GRAY);
+        }
     }
 
     // ------------------------------------------------------------------ поиск / уровень
@@ -386,17 +427,6 @@ public final class DragonBeacon implements Listener {
         int radius2 = (int) Math.round(radius);
         double cx = b.x + 0.5;
         double cz = b.z + 0.5;
-        boolean aura = b.primary.equals("aura_poison") || b.secondary.equals("aura_poison");
-        if (aura) {
-            Location center = new Location(w, cx, b.y, cz);
-            for (org.bukkit.entity.Entity e : w.getNearbyEntities(center,
-                    radius2, 256, radius2)) {
-                if (e instanceof Monster m && !m.isDead()) {
-                    m.addPotionEffect(new PotionEffect(PotionEffectType.POISON,
-                            80, 1, true, false, true));
-                }
-            }
-        }
         for (Player p : plugin.players()) {
             if (!p.getWorld().equals(w)) {
                 continue;
@@ -436,9 +466,6 @@ public final class DragonBeacon implements Listener {
                 p.removePotionEffect(PotionEffectType.DARKNESS);
                 p.removePotionEffect(PotionEffectType.POISON);
                 p.removePotionEffect(PotionEffectType.WITHER);
-            }
-            case "aura_poison" -> {
-                // яд мобам накладывается в applyEffects (по зоне маяка)
             }
             default -> {
             }
@@ -508,6 +535,7 @@ public final class DragonBeacon implements Listener {
             boolean unlocked = f.minLevel <= level;
             ItemStack it = new ItemStack(unlocked ? f.icon : Material.BARRIER);
             ItemMeta m = it.getItemMeta();
+            boolean selected = unlocked && (f.id.equals(b.primary) || f.id.equals(b.secondary));
             m.displayName(Component.text(f.name,
                     unlocked ? NamedTextColor.WHITE : NamedTextColor.DARK_GRAY));
             List<Component> l = new ArrayList<>();
@@ -534,6 +562,10 @@ public final class DragonBeacon implements Listener {
                 }
             }
             m.lore(l);
+            if (selected) {
+                // Подсветка выбранного эффекта — зачарованное сияние
+                m.setEnchantmentGlintOverride(true);
+            }
             it.setItemMeta(m);
             inv.setItem(slot, it);
         }
