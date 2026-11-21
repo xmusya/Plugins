@@ -36,6 +36,8 @@ import org.bukkit.event.player.PlayerTeleportEvent;
 import org.bukkit.event.world.ChunkLoadEvent;
 import org.bukkit.generator.structure.GeneratedStructure;
 import org.bukkit.generator.structure.Structure;
+import org.bukkit.advancement.Advancement;
+import org.bukkit.advancement.AdvancementProgress;
 import org.bukkit.attribute.Attribute;
 import org.bukkit.attribute.AttributeInstance;
 import org.bukkit.attribute.AttributeModifier;
@@ -776,8 +778,11 @@ public final class EndManager implements Listener {
             return;
         }
         Player p = e.getPlayer();
-        Bukkit.dispatchCommand(Bukkit.getConsoleSender(),
-                "advancement revoke " + p.getName() + " only minecraft:end/levitate");
+        // Ваниль может выдавать ачивку заново, пока висит левитация.
+        // Снимаем молча (без broadcast в чат) и не чаще раза в 5 секунд.
+        if (!revokeLevitationAdvancement(p)) {
+            return;
+        }
         int back = cfg.levitationAdvancementXp;
         if (back > 0) {
             try {
@@ -785,6 +790,29 @@ public final class EndManager implements Listener {
             } catch (RuntimeException ignored) {
             }
         }
+    }
+
+    private final Map<UUID, Long> lastLevAdvRevoke = new HashMap<>();
+
+    /** Снимает ачивку «Great View From Up Here» без сообщений в общий чат. */
+    private boolean revokeLevitationAdvancement(Player p) {
+        long now = System.currentTimeMillis();
+        Long last = lastLevAdvRevoke.get(p.getUniqueId());
+        if (last != null && now - last < 5000L) {
+            return false;
+        }
+        lastLevAdvRevoke.put(p.getUniqueId(), now);
+        Advancement adv = Bukkit.getAdvancement(NamespacedKey.minecraft("end/levitate"));
+        if (adv != null) {
+            AdvancementProgress prog = p.getAdvancementProgress(adv);
+            for (String crit : new ArrayList<>(prog.getAwardedCriteria())) {
+                try {
+                    prog.revokeCriteria(crit);
+                } catch (RuntimeException ignored) {
+                }
+            }
+        }
+        return true;
     }
 
     // ================================================================== тики
@@ -795,6 +823,7 @@ public final class EndManager implements Listener {
         long now = System.currentTimeMillis();
         for (Player p : plugin.players()) {
             tickOuterIslands(p);
+            stripVoidLevitation(p);
             tickVoid(p);
             tickCurseAndBan(p, now);
         }
@@ -818,6 +847,33 @@ public final class EndManager implements Listener {
         back.setY(Math.max(y, l.getWorld().getMinHeight() + 2));
         p.teleport(back);
         Msg.action(p, "Внешние острова Энда откроются на " + cfg.outerUnlockDay + "-й день!");
+    }
+
+    /**
+     * Снимает обычную левитацию (уровни 1..N) у игрока в пустоте Энда
+     * ниже заданной высоты. Левитацию от спасения плагина не трогает.
+     */
+    private void stripVoidLevitation(Player p) {
+        if (!cfg.enabled || !cfg.voidStripLevitation) {
+            return;
+        }
+        Location l = p.getLocation();
+        if (l.getWorld().getEnvironment() != World.Environment.THE_END
+                || l.getY() >= cfg.voidStripLevitationMaxY) {
+            return;
+        }
+        if (voidRescue.contains(p.getUniqueId())) {
+            return; // своя левитация спасения из пустоты
+        }
+        PotionEffect lev = p.getPotionEffect(PotionEffectType.LEVITATION);
+        if (lev == null) {
+            return;
+        }
+        if (lev.getAmplifier() >= cfg.voidStripLevitationMaxLevel) {
+            return; // выше разрешённого уровня — не наша забота
+        }
+        p.removePotionEffect(PotionEffectType.LEVITATION);
+        Msg.action(p, "Левитация не действует в пустоте Энда.");
     }
 
     private void tickVoid(Player p) {

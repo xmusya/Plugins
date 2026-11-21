@@ -133,6 +133,12 @@ public final class EndCfg {
     public boolean cancelLevitationAdvancement = true;
     /** Сколько опыта возвращать за снятую ачивку (0 = не возвращать). */
     public int levitationAdvancementXp = 50;
+    /** Снимать обычную левитацию (уровни 1..N) в пустоте Энда ниже max-y. */
+    public boolean voidStripLevitation = true;
+    /** Максимальный УРОВЕНЬ левитации, который снимаем (1 = только «Левитация I»). */
+    public int voidStripLevitationMaxLevel = 3;
+    /** Высота: на этой и выше — левитацию не трогаем. */
+    public int voidStripLevitationMaxY = 15;
     public int voidSlowFallingSeconds = 15;
     /** Уровень Плавного падения: 0 = Slow Falling I. */
     public int voidSlowFallingAmplifier = 0;
@@ -228,6 +234,9 @@ public final class EndCfg {
         e.voidHearts = s.getInt("void.hearts", e.voidHearts);
         e.cancelLevitationAdvancement = s.getBoolean("void.cancel-levitation-advancement", e.cancelLevitationAdvancement);
         e.levitationAdvancementXp = Math.max(0, s.getInt("void.levitation-advancement-xp", e.levitationAdvancementXp));
+        e.voidStripLevitation = s.getBoolean("void.strip-levitation", e.voidStripLevitation);
+        e.voidStripLevitationMaxLevel = Math.max(1, s.getInt("void.strip-levitation-max-level", e.voidStripLevitationMaxLevel));
+        e.voidStripLevitationMaxY = s.getInt("void.strip-levitation-max-y", e.voidStripLevitationMaxY);
         e.voidSlowFallingSeconds = s.getInt("void.slow-falling-seconds", e.voidSlowFallingSeconds);
         e.voidSlowFallingAmplifier = s.getInt("void.slow-falling-amplifier", e.voidSlowFallingAmplifier);
 
