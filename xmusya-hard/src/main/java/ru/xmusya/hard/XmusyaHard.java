@@ -82,6 +82,15 @@ public final class XmusyaHard extends JavaPlugin implements Listener {
     /** Усиление мобов в Кровавую луну (amplifier; -1 = не выдавать). */
     public int bmMobStrength = 0;
     public int bmMobSpeed = 0;
+    /** Порог «шахтёра» (ниже — не действует КЛ, если был там до начала). */
+    public int bmMineY = 40;
+    /** Порог «высотника» (выше — не действует КЛ, если был там до начала). */
+    public int bmHeightY = 120;
+    /** С какого дня в КЛ появляются визер-скелеты, утопленники и вексы. */
+    public int bmEndgameDay = 60;
+    /** Игроки, спрятанные в шахте/на высоте на момент старта КЛ. */
+    public final Set<UUID> bmExempt = new HashSet<>();
+    private NamespacedKey bmWitherKey;
 
     // ------------------------------------------------------------------ состояние
     public long totalTicks = 0L;
@@ -108,6 +117,8 @@ public final class XmusyaHard extends JavaPlugin implements Listener {
     public EndState endState;
     public EndManager endManager;
     public EndPortal endPortal;
+    public DragonBeacon dragonBeacon;
+    public GuideBook guideBook;
     /** true, если обнаружено пересоздание мира (сбрасываем прогресс). */
     public boolean wipeDetected = false;
 
@@ -128,6 +139,7 @@ public final class XmusyaHard extends JavaPlugin implements Listener {
                     + " (старые значения сохранены, копия — config.yml.bak).");
         }
         loadConfig();
+        bmWitherKey = new NamespacedKey(this, "bm_wither_skeleton");
         loadState();
         // Дополнительная проверка «мир сброшен»: состояние опережает мир
         // (например, остался день 30 и фаза netherite, а мир только создан).
@@ -174,6 +186,16 @@ public final class XmusyaHard extends JavaPlugin implements Listener {
             endPortal.start();
         }
 
+        // Яйцо дракона на маяке
+        dragonBeacon = new DragonBeacon(this);
+        getServer().getPluginManager().registerEvents(dragonBeacon, this);
+        dragonBeacon.start();
+        // Книга-гайд
+        guideBook = new GuideBook(this);
+        getServer().getPluginManager().registerEvents(guideBook, this);
+        // Меню /xmh
+        getServer().getPluginManager().registerEvents(new Menu(), this);
+
         collectRecipeKeys();
         getLogger().info("Рецептов на сервере: " + allRecipeKeys.size()
                 + " (firework_rocket: " + (recipeExists("firework_rocket") ? "есть" : "НЕТ") + ")");
@@ -210,6 +232,9 @@ public final class XmusyaHard extends JavaPlugin implements Listener {
         if (endState != null) {
             endState.save();
         }
+        if (dragonBeacon != null) {
+            dragonBeacon.save();
+        }
         if (mainBar != null) {
             for (Player p : Bukkit.getOnlinePlayers()) {
                 p.hideBossBar(mainBar);
@@ -230,7 +255,11 @@ public final class XmusyaHard extends JavaPlugin implements Listener {
         bmInterval = getConfig().getInt("bloodmoon.interval", 10);
         bmMobStrength = getConfig().getInt("bloodmoon.mob-strength", 0);
         bmMobSpeed = getConfig().getInt("bloodmoon.mob-speed", 0);
+        bmMineY = getConfig().getInt("bloodmoon.mine-y", 40);
+        bmHeightY = getConfig().getInt("bloodmoon.height-y", 120);
+        bmEndgameDay = getConfig().getInt("bloodmoon.endgame-mobs-day", 60);
         starterBuffsUntilDay = getConfig().getInt("starter-buffs-until-day", 4);
+        Msg.setPrefix(getConfig().getString("prefix", "&c[XMH] "));
 
         List<PhaseCfg> loaded = PhaseCfg.defaults();
         org.bukkit.configuration.ConfigurationSection ps =
@@ -823,7 +852,9 @@ public final class XmusyaHard extends JavaPlugin implements Listener {
         checkPhase();
         if (bmActive && !bmPaused) {
             for (Player p : players()) {
-                Restrictions.checkSleeping(p);
+                if (!isBmExempt(p)) {
+                    Restrictions.checkSleeping(p);
+                }
             }
         }
     }
@@ -833,7 +864,9 @@ public final class XmusyaHard extends JavaPlugin implements Listener {
             return;
         }
         for (Player p : players()) {
-            bloodMoonProbe(p);
+            if (!isBmExempt(p)) {
+                bloodMoonProbe(p);
+            }
         }
     }
 
@@ -842,6 +875,9 @@ public final class XmusyaHard extends JavaPlugin implements Listener {
             return;
         }
         for (Player p : players()) {
+            if (isBmExempt(p)) {
+                continue;
+            }
             if (!canSeeSky(p)) {
                 p.addPotionEffect(new PotionEffect(PotionEffectType.DARKNESS, 140, 0, true, false, true));
                 p.addPotionEffect(new PotionEffect(PotionEffectType.HUNGER, 140, 0, true, false, true));
@@ -866,17 +902,21 @@ public final class XmusyaHard extends JavaPlugin implements Listener {
             return;
         }
         for (Player p : players()) {
+            if (isBmExempt(p)) {
+                continue;
+            }
             double y = p.getLocation().getY();
-            if (y < 40.0 || y > 120.0) {
+            if (y < bmMineY || y > bmHeightY) {
                 Msg.action(p, "Глубина и высота не скроют вас от ночной охоты!");
                 Location loc = randomOutdoorLocation(p.getWorld(), p.getLocation(), 6, 10);
                 if (loc == null) {
                     loc = p.getLocation().clone().add(rnd.nextInt(11) - 5, 1, rnd.nextInt(11) - 5);
                 }
-                if (y < 40.0) {
+                if (y < bmMineY) {
                     // в глубине — вексы
                     Entity e = p.getWorld().spawnEntity(loc, EntityType.VEX);
                     e.addScoreboardTag("xh_scaled");
+                    e.addScoreboardTag("xh_bm_vex");
                 } else {
                     // высоко — фантомы на 10–15 блоков выше игрока
                     Location spawnAt = p.getLocation().clone().add(
@@ -942,7 +982,12 @@ public final class XmusyaHard extends JavaPlugin implements Listener {
             w.setThundering(true);
             w.setWeatherDuration(12000);
         }
+        bmExempt.clear();
         for (Player p : players()) {
+            double y = p.getLocation().getY();
+            if (y < bmMineY || y > bmHeightY) {
+                bmExempt.add(p.getUniqueId());
+            }
             p.playSound(Msg.witherSpawn());
         }
         Msg.broadcastRaw(Component.text("[КРОВАВАЯ ЛУНА] ", NamedTextColor.DARK_RED, TextDecoration.BOLD)
@@ -963,8 +1008,13 @@ public final class XmusyaHard extends JavaPlugin implements Listener {
             w.setThundering(false);
             w.setWeatherDuration(6000);
         }
+        bmExempt.clear();
         for (World world : Bukkit.getWorlds()) {
             for (Entity e : world.getEntities()) {
+                if (e.getScoreboardTags().contains("xh_bm_vex")) {
+                    e.remove(); // вексы КЛ деспавнятся к рассвету
+                    continue;
+                }
                 e.removeScoreboardTag("bm_checked");
                 e.removeScoreboardTag("xh_bm_spawned");
             }
@@ -1040,15 +1090,67 @@ public final class XmusyaHard extends JavaPlugin implements Listener {
             if (loc.clone().subtract(0, 1, 0).getBlock().isEmpty()) {
                 continue;
             }
-            EntityType type = switch (rnd.nextInt(3)) {
-                case 0 -> EntityType.ZOMBIE;
-                case 1 -> EntityType.SKELETON;
-                default -> EntityType.SPIDER;
-            };
+            boolean endgame = currentDay >= bmEndgameDay;
+            EntityType type;
+            if (endgame) {
+                type = switch (rnd.nextInt(5)) {
+                    case 0 -> EntityType.ZOMBIE;
+                    case 1 -> EntityType.SKELETON;
+                    case 2 -> EntityType.DROWNED;
+                    case 3 -> EntityType.WITHER_SKELETON;
+                    default -> EntityType.VEX;
+                };
+            } else {
+                type = switch (rnd.nextInt(3)) {
+                    case 0 -> EntityType.ZOMBIE;
+                    case 1 -> EntityType.SKELETON;
+                    default -> EntityType.SPIDER;
+                };
+            }
             Entity spawned = w.spawnEntity(loc, type);
             spawned.addScoreboardTag("xh_bm_spawned");
+            if (type == EntityType.VEX) {
+                spawned.addScoreboardTag("xh_bm_vex");
+            }
+            if (type == EntityType.WITHER_SKELETON && bmWitherKey != null) {
+                spawned.getPersistentDataContainer().set(bmWitherKey,
+                        org.bukkit.persistence.PersistentDataType.BYTE, (byte) 1);
+            }
             return;
         }
+    }
+
+    /**
+     * Игрок был в шахте/на высоте в момент начала КЛ и всё ещё там —
+     * Кровавая луна на него не действует. Вернулся в обычные высоты —
+     * исключение снимается до конца ночи.
+     */
+    public boolean isBmExempt(Player p) {
+        if (!bmActive || bmExempt.isEmpty()) {
+            return false;
+        }
+        if (!bmExempt.contains(p.getUniqueId())) {
+            return false;
+        }
+        double y = p.getLocation().getY();
+        if (y < bmMineY || y > bmHeightY) {
+            return true;
+        }
+        bmExempt.remove(p.getUniqueId());
+        return false;
+    }
+
+    /** Визер-скелеты, заспавненные КЛ, не дропают череп. */
+    @EventHandler(priority = EventPriority.HIGH)
+    public void onBloodMoonWitherDeath(org.bukkit.event.entity.EntityDeathEvent e) {
+        if (bmWitherKey == null || e.getEntityType() != EntityType.WITHER_SKELETON) {
+            return;
+        }
+        if (!e.getEntity().getPersistentDataContainer().has(bmWitherKey,
+                org.bukkit.persistence.PersistentDataType.BYTE)) {
+            return;
+        }
+        e.getDrops().removeIf(st -> st != null && st.getType() == Material.WITHER_SKELETON_SKULL);
     }
 
     public boolean isScalable(Entity e) {
@@ -1187,7 +1289,8 @@ public final class XmusyaHard extends JavaPlugin implements Listener {
 
     @EventHandler(priority = EventPriority.HIGHEST)
     public void onBedEnter(PlayerBedEnterEvent event) {
-        if (!bmActive || bmPaused || isBot(event.getPlayer())) {
+        if (!bmActive || bmPaused || isBot(event.getPlayer())
+                || isBmExempt(event.getPlayer())) {
             return;
         }
         event.setUseBed(org.bukkit.event.Event.Result.DENY);
@@ -1231,7 +1334,7 @@ public final class XmusyaHard extends JavaPlugin implements Listener {
                 Menu.open(this, p);
                 return true;
             }
-            sender.sendMessage("Использование: /xmh <skip|reset|pause|resume|bm ...|phase ...>");
+            sendAdminHelp(sender);
             return true;
         }
         String sub = args[0].toLowerCase();
@@ -1251,25 +1354,33 @@ public final class XmusyaHard extends JavaPlugin implements Listener {
             return true;
         }
 
-        if (sub.equals("egg")) {
-            if (!(sender instanceof Player p)) {
-                sender.sendMessage("Команда только для игрока.");
-                return true;
-            }
-            if (endManager != null) {
-                endManager.activateEgg(p);
-            }
-            return true;
-        }
-
-        // /xmh effect give <эффект|hearts> <ник> — передать свой эффект игроку
-        if (sub.equals("effect")) {
+        // /xmh give effect <ник> <эффект>   |   /xmh give hp <ник>
+        if (sub.equals("give")) {
             if (!(sender instanceof Player from)) {
-                sender.sendMessage("Команда только для игрока.");
+                sender.sendMessage("Передача эффектов доступна только игроку.");
                 return true;
             }
-            if (args.length < 3) {
-                Msg.chat(from, "Использование: /xmh effect give <эффект|hearts> <ник>");
+            if (args.length < 2) {
+                Msg.chat(from, "Использование: /xmh give effect <ник> <эффект> "
+                        + "или /xmh give hp <ник>");
+                return true;
+            }
+            String kind = args[1].toLowerCase();
+            if (kind.equals("hp") || kind.equals("hearts") || kind.equals("сердца")) {
+                if (args.length < 3) {
+                    Msg.chat(from, "Использование: /xmh give hp <ник>");
+                    return true;
+                }
+                Player to = Bukkit.getPlayerExact(args[2]);
+                if (to == null) {
+                    Msg.chat(from, "Игрок " + args[2] + " не в сети.", NamedTextColor.RED);
+                    return true;
+                }
+                effectTransfer(from, to, "hearts");
+                return true;
+            }
+            if (args.length < 4) {
+                Msg.chat(from, "Использование: /xmh give effect <ник> <эффект>");
                 return true;
             }
             Player to = Bukkit.getPlayerExact(args[2]);
@@ -1277,7 +1388,50 @@ public final class XmusyaHard extends JavaPlugin implements Listener {
                 Msg.chat(from, "Игрок " + args[2] + " не в сети.", NamedTextColor.RED);
                 return true;
             }
-            effectTransfer(from, to, args[1]);
+            effectTransfer(from, to, args[3]);
+            return true;
+        }
+
+        // Старая форма: /xmh effect give <эффект|hearts> <ник>
+        if (sub.equals("effect")) {
+            if (!(sender instanceof Player from)) {
+                sender.sendMessage("Команда только для игрока.");
+                return true;
+            }
+            if (args.length < 4) {
+                Msg.chat(from, "Использование: /xmh give effect <ник> <эффект>");
+                return true;
+            }
+            Player to = Bukkit.getPlayerExact(args[3]);
+            if (to == null) {
+                Msg.chat(from, "Игрок " + args[3] + " не в сети.", NamedTextColor.RED);
+                return true;
+            }
+            effectTransfer(from, to, args[2]);
+            return true;
+        }
+
+        // /xmh guide — получить книгу-гайд (админ может выдать другому)
+        if (sub.equals("guide")) {
+            if (guideBook == null) {
+                sender.sendMessage("Книга-гайд выключена (guide.yml).");
+                return true;
+            }
+            Player target;
+            if (args.length > 1 && (!(sender instanceof Player) || sender.isOp()
+                    || sender.hasPermission("xmusyahard.admin"))) {
+                target = Bukkit.getPlayerExact(args[1]);
+            } else if (sender instanceof Player p) {
+                target = p;
+            } else {
+                sender.sendMessage("Использование: /xmh guide <ник>");
+                return true;
+            }
+            if (target == null) {
+                sender.sendMessage("Игрок не в сети.");
+                return true;
+            }
+            guideBook.reloadAndGive(target);
             return true;
         }
 
@@ -1406,11 +1560,13 @@ public final class XmusyaHard extends JavaPlugin implements Listener {
                 .append(Msg.c(" — установить фазу", NamedTextColor.GRAY)));
         sender.sendMessage(Component.text("/xmh end status|locate|scan|reset", NamedTextColor.YELLOW)
                 .append(Msg.c(" — крепость/портал Энда", NamedTextColor.GRAY)));
-        sender.sendMessage(Component.text("/xmh egg", NamedTextColor.YELLOW)
-                .append(Msg.c(" — привязать яйцо дракона (Спешка/Скорость)", NamedTextColor.GRAY)));
-        sender.sendMessage(Component.text("/xmh effect give <эффект|hearts> <ник>", NamedTextColor.YELLOW)
-                .append(Msg.c(" — передать свой позитивный эффект или сердца игроку",
+        sender.sendMessage(Component.text("/xmh give effect <ник> <эффект>", NamedTextColor.YELLOW)
+                .append(Msg.c(" — передать свой эффект (остаток времени сохраняется)",
                         NamedTextColor.GRAY)));
+        sender.sendMessage(Component.text("/xmh give hp <ник>", NamedTextColor.YELLOW)
+                .append(Msg.c(" — передать 1 бонусное сердце", NamedTextColor.GRAY)));
+        sender.sendMessage(Component.text("/xmh guide [ник]", NamedTextColor.YELLOW)
+                .append(Msg.c(" — выдать книгу-гайд", NamedTextColor.GRAY)));
         sender.sendMessage(Component.text("/xmh reload", NamedTextColor.YELLOW)
                 .append(Msg.c(" — перечитать config.yml", NamedTextColor.GRAY)));
     }

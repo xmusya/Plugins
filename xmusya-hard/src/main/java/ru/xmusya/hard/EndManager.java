@@ -966,7 +966,6 @@ public final class EndManager implements Listener {
     private void tickSlow() {
         for (Player p : plugin.players()) {
             applyBonusHearts(p);
-            applyEggBuffs(p);
             applyPortalBuffs(p);
         }
     }
@@ -1029,6 +1028,20 @@ public final class EndManager implements Listener {
         int amp = amplifier;
         if (cur != null && cur[1] > System.currentTimeMillis()) {
             amp = (int) Math.min(4, cur[0] + amplifier);
+        }
+        map.put(effect, new long[]{amp, until});
+        state.save();
+        applyPortalBuffs(p);
+    }
+
+    /** Бафф за починку рамки: длительность в РЕАЛЬНЫХ днях. */
+    public void addTimedBuffForDays(Player p, String effect, int amplifier, int days) {
+        Map<String, long[]> map = state.buffs.computeIfAbsent(p.getUniqueId(), k -> new HashMap<>());
+        long until = System.currentTimeMillis() + Math.max(1, days) * 86_400_000L;
+        long[] cur = map.get(effect);
+        int amp = amplifier;
+        if (cur != null && cur[1] > System.currentTimeMillis()) {
+            amp = (int) Math.min(6, Math.max(cur[0], amplifier));
         }
         map.put(effect, new long[]{amp, until});
         state.save();

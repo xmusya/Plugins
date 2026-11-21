@@ -19,6 +19,7 @@ import org.bukkit.entity.TextDisplay;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
+import org.bukkit.event.block.Action;
 import org.bukkit.event.block.BlockBreakEvent;
 import org.bukkit.event.block.BlockFromToEvent;
 import org.bukkit.event.block.BlockPlaceEvent;
@@ -49,6 +50,9 @@ import java.util.UUID;
  * цикл сброса портала, защита портала и комнаты.
  */
 public final class EndPortal implements Listener {
+
+    /** Блок-заглушка на месте сломанной рамки (по нему идёт починка). */
+    private static final Material BROKEN_BLOCK = Material.CRYING_OBSIDIAN;
 
     private final XmusyaHard plugin;
     private final EndCfg cfg;
@@ -84,10 +88,17 @@ public final class EndPortal implements Listener {
         sorted.sort(Comparator.comparingInt(Block::getY)
                 .thenComparingInt(Block::getX).thenComparingInt(Block::getZ));
 
-        boolean same = sorted.size() == state.frames.size();
+        List<EndState.Frame> brokenOld = new ArrayList<>();
+        for (EndState.Frame f : state.frames.values()) {
+            if (f.broken) {
+                brokenOld.add(f);
+            }
+        }
+        boolean same = sorted.size() + brokenOld.size() == state.frames.size();
         if (same) {
             for (Block b : sorted) {
-                if (!state.frames.containsKey(EndState.keyOf(b))) {
+                EndState.Frame f = state.frames.get(EndState.keyOf(b));
+                if (f == null || f.broken) {
                     same = false;
                     break;
                 }
@@ -97,6 +108,13 @@ public final class EndPortal implements Listener {
             Map<String, EndState.Frame> old = new HashMap<>(state.frames);
             state.frames.clear();
             assignItems(sorted, old);
+            // Возвращаем сломанные рамки (их блоков в мире нет — заглушка)
+            for (EndState.Frame f : brokenOld) {
+                if (!state.frames.containsKey(f.key())) {
+                    state.frames.put(f.key(), f);
+                    phases.putIfAbsent(f.key(), rnd.nextFloat() * 6.283f);
+                }
+            }
             state.save();
             plugin.getLogger().info("Найдено рамок портала: " + sorted.size());
             // уточняем координаты крепости по центру портала
@@ -212,7 +230,21 @@ public final class EndPortal implements Listener {
             return;
         }
         Block b = e.getClickedBlock();
-        if (b == null || b.getType() != Material.END_PORTAL_FRAME) {
+        if (b == null) {
+            return;
+        }
+        // Сломанная рамка — починка по заглушке
+        if (b.getType() == BROKEN_BLOCK) {
+            EndState.Frame bf = state.frames.get(EndState.keyOf(b));
+            if (bf != null && bf.broken) {
+                e.setCancelled(true);
+                if (e.getAction() == Action.RIGHT_CLICK_BLOCK) {
+                    repairBrokenFrame(e.getPlayer(), b, bf);
+                }
+            }
+            return;
+        }
+        if (b.getType() != Material.END_PORTAL_FRAME) {
             return;
         }
         Player p = e.getPlayer();
@@ -427,6 +459,7 @@ public final class EndPortal implements Listener {
         if (!cfg.enabled || state.frames.isEmpty()) {
             return;
         }
+        checkBreakEvents(day);
         if (day < cfg.cycleStartDay) {
             return;
         }
@@ -494,10 +527,7 @@ public final class EndPortal implements Listener {
             }
             f.filled = false;
             f.contributor = "";
-            EndCfg.PoolItem pick = cfg.pool.get(rnd.nextInt(cfg.pool.size()));
-            f.itemId = pick.material.name();
-            f.itemName = pick.name;
-            f.amount = Math.max(1, pick.amount);
+            assignRandomItem(f);
             refreshDisplays(f);
         }
         state.save();
@@ -513,11 +543,13 @@ public final class EndPortal implements Listener {
         }
         Block b = e.getBlock();
         boolean portalBlock = b.getType() == Material.END_PORTAL;
+        EndState.Frame at = state.frames.get(EndState.keyOf(b));
         boolean ourFrame = b.getType() == Material.END_PORTAL_FRAME
-                && state.frames.containsKey(EndState.keyOf(b));
+                && at != null;
+        boolean brokenFrame = b.getType() == BROKEN_BLOCK && at != null && at.broken;
         boolean roomSpawner = manager.isPortalRoomSpawner(b);
 
-        if (!portalBlock && !ourFrame && !roomSpawner) {
+        if (!portalBlock && !ourFrame && !brokenFrame && !roomSpawner) {
             return;
         }
         e.setCancelled(true);
@@ -525,8 +557,13 @@ public final class EndPortal implements Listener {
         if (plugin.isBot(p)) {
             return;
         }
+        if (!cfg.breakEffects) {
+            Msg.action(p, "Это трогать нельзя!");
+            p.playSound(Msg.villagerNo());
+            return;
+        }
 
-        // Мгновенная регенерация + визуальный взрыв
+        // Мгновенная регенерация + визуальный взрыв (по умолчанию выключено)
         p.setHealth(Math.min(p.getMaxHealth(), p.getHealth() + 6.0));
         Location loc = b.getLocation().add(0.5, 0.5, 0.5);
         b.getWorld().createExplosion(loc, 0.0f, false, false, p);
@@ -650,7 +687,9 @@ public final class EndPortal implements Listener {
 
         UUID itemId = null;
         if (!f.filled) {
-            Material m = Material.matchMaterial(f.itemId);
+            Material m = f.broken
+                    ? brokenIcon(f)
+                    : Material.matchMaterial(f.itemId);
             if (m != null) {
                 Location il = base.clone().add(0.5, 1.2, 0.5);
                 ItemDisplay item = w.spawn(il, ItemDisplay.class, d -> {
@@ -671,10 +710,19 @@ public final class EndPortal implements Listener {
     }
 
     private Component textFor(EndState.Frame f) {
+        if (f.broken) {
+            return Component.text("⚠ " + (f.repairTier.equals("ultra") ? "УЛЬТРА" : "СЛОМАНО"),
+                    NamedTextColor.RED, TextDecoration.BOLD);
+        }
         if (f.filled) {
             return Component.text("✔", NamedTextColor.GREEN, TextDecoration.BOLD);
         }
         return Component.text("×" + f.amount, NamedTextColor.WHITE, TextDecoration.BOLD);
+    }
+
+    private Material brokenIcon(EndState.Frame f) {
+        Material head = Material.matchMaterial(f.repairHead);
+        return head != null ? head : Material.NETHERITE_BLOCK;
     }
 
     private void tickDisplays() {
@@ -743,6 +791,230 @@ public final class EndPortal implements Listener {
                 .rotateX((float) Math.toRadians(pitch));
     }
 
+    // ================================================================== сломы и починка
+    private void checkBreakEvents(int day) {
+        boolean normal = cfg.normalBreakEnabled && day >= cfg.normalBreakStartDay
+                && (day - cfg.normalBreakStartDay) % cfg.normalBreakInterval == 0
+                && state.lastNormalBreakDay != day;
+        if (normal) {
+            state.lastNormalBreakDay = day;
+            if (rnd.nextDouble() < cfg.normalBreakChance) {
+                int n = breakFrames(cfg.normalBreakFrames, "normal");
+                if (n > 0) {
+                    Msg.broadcast("Обычный слом: выбито рамок портала — " + n
+                            + ". Их нужно починить вручную!", NamedTextColor.DARK_RED);
+                }
+            }
+            state.save();
+        }
+        boolean ultra = cfg.ultraBreakEnabled && day >= cfg.ultraBreakStartDay
+                && (day - cfg.ultraBreakStartDay) % cfg.ultraBreakInterval == 0
+                && state.lastUltraBreakDay != day;
+        if (ultra) {
+            state.lastUltraBreakDay = day;
+            if (rnd.nextDouble() < cfg.ultraBreakChance) {
+                int n = breakFrames(cfg.ultraBreakFrames, "ultra");
+                if (n > 0) {
+                    Msg.broadcast("УЛЬТРА-СЛОМ: выбита рамка портала! Починка требует"
+                            + " очень редких ресурсов и головы моба.", NamedTextColor.DARK_RED);
+                }
+            }
+            state.save();
+        }
+    }
+
+    private void assignRandomItem(EndState.Frame f) {
+        if (cfg.pool.isEmpty()) {
+            f.itemId = Material.ENDER_EYE.name();
+            f.itemName = "Око Энда";
+            f.amount = 1;
+            return;
+        }
+        EndCfg.PoolItem pick = cfg.pool.get(rnd.nextInt(cfg.pool.size()));
+        f.itemId = pick.material.name();
+        f.itemName = pick.name;
+        f.amount = Math.max(1, pick.amount);
+    }
+
+    /** Ломает до count случайных целых рамок. Возвращает сколько сломано. */
+    private int breakFrames(int count, String tier) {
+        List<EndState.Frame> candidates = new ArrayList<>();
+        for (EndState.Frame f : state.frames.values()) {
+            if (!f.broken && f.loc() != null) {
+                candidates.add(f);
+            }
+        }
+        Collections.shuffle(candidates, rnd);
+        int broken = 0;
+        for (int i = 0; i < Math.min(count, candidates.size()); i++) {
+            EndState.Frame f = candidates.get(i);
+            Location l = f.loc();
+            if (l == null) {
+                continue;
+            }
+            Block b = l.getBlock();
+            if (b.getType() != Material.END_PORTAL_FRAME) {
+                continue;
+            }
+            b.setType(BROKEN_BLOCK, false);
+            f.broken = true;
+            f.filled = false;
+            f.contributor = "";
+            f.repairTier = tier;
+            if (tier.equals("ultra")) {
+                EndCfg.HeadCfg h = randomHead();
+                f.repairHead = h == null ? "" : h.material.name();
+            } else {
+                f.repairHead = "";
+            }
+            refreshDisplays(f);
+            broken++;
+        }
+        state.save();
+        return broken;
+    }
+
+    private EndCfg.HeadCfg randomHead() {
+        if (cfg.ultraHeads.isEmpty()) {
+            return null;
+        }
+        int total = 0;
+        for (EndCfg.HeadCfg h : cfg.ultraHeads) {
+            total += h.weight;
+        }
+        int roll = rnd.nextInt(Math.max(1, total));
+        for (EndCfg.HeadCfg h : cfg.ultraHeads) {
+            roll -= h.weight;
+            if (roll < 0) {
+                return h;
+            }
+        }
+        return cfg.ultraHeads.get(cfg.ultraHeads.size() - 1);
+    }
+
+    /** Набор предметов для починки конкретной сломанной рамки. */
+    public List<EndCfg.PoolItem> repairKit(EndState.Frame f) {
+        List<EndCfg.PoolItem> kit = new ArrayList<>(f.repairTier.equals("ultra")
+                ? cfg.ultraRepair : cfg.normalRepair);
+        if (f.repairTier.equals("ultra") && !f.repairHead.isEmpty()) {
+            Material head = Material.matchMaterial(f.repairHead);
+            if (head != null) {
+                EndCfg.PoolItem pi = new EndCfg.PoolItem();
+                pi.material = head;
+                pi.name = pretty(head);
+                pi.amount = 1;
+                kit.add(pi);
+            }
+        }
+        return kit;
+    }
+
+    private static String pretty(Material m) {
+        String n = m.name().toLowerCase().replace('_', ' ');
+        return Character.toUpperCase(n.charAt(0)) + n.substring(1);
+    }
+
+    private boolean hasKit(Player p, List<EndCfg.PoolItem> kit) {
+        for (EndCfg.PoolItem it : kit) {
+            if (countInInventory(p, it.material) < it.amount) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private String missingKitText(Player p, List<EndCfg.PoolItem> kit) {
+        for (EndCfg.PoolItem it : kit) {
+            int have = countInInventory(p, it.material);
+            if (have < it.amount) {
+                return "Для починки нужно: " + it.name + " x" + it.amount
+                        + " (у вас " + have + "/" + it.amount + ")";
+            }
+        }
+        return "Не хватает предметов для починки.";
+    }
+
+    private void takeKit(Player p, List<EndCfg.PoolItem> kit) {
+        for (EndCfg.PoolItem it : kit) {
+            takeMaterial(p, it.material, it.amount);
+        }
+    }
+
+    private void takeMaterial(Player p, Material m, int amount) {
+        int left = amount;
+        ItemStack[] contents = p.getInventory().getContents();
+        for (int i = 0; i < contents.length && left > 0; i++) {
+            ItemStack st = contents[i];
+            if (st == null || st.getType() != m) {
+                continue;
+            }
+            int take = Math.min(left, st.getAmount());
+            st.setAmount(st.getAmount() - take);
+            if (st.getAmount() <= 0) {
+                p.getInventory().setItem(i, null);
+            }
+            left -= take;
+        }
+    }
+
+    private void repairBrokenFrame(Player p, Block b, EndState.Frame f) {
+        if (plugin.isBot(p)) {
+            return;
+        }
+        List<EndCfg.PoolItem> kit = repairKit(f);
+        if (!hasKit(p, kit)) {
+            Msg.action(p, missingKitText(p, kit));
+            p.playSound(Msg.villagerNo());
+            return;
+        }
+        takeKit(p, kit);
+        b.setType(Material.END_PORTAL_FRAME, false);
+        if (b.getBlockData() instanceof EndPortalFrame data) {
+            data.setEye(false);
+            b.setBlockData(data, false);
+        }
+        f.broken = false;
+        f.filled = false;
+        f.contributor = "";
+        assignRandomItem(f);
+        state.save();
+        refreshDisplays(f);
+        // Сильный бафф починщику на несколько РЕАЛЬНЫХ дней
+        for (EndCfg.BuffCfg bc : cfg.repairBuffs) {
+            manager.addTimedBuffForDays(p, bc.effect, bc.amplifier, cfg.repairBuffDays);
+        }
+        Msg.broadcast(p.getName() + " починил рамку портала ("
+                + (f.repairTier.equals("ultra") ? "ультра" : "обычная")
+                + ") и получил мощный бафф на " + cfg.repairBuffDays + " дн.!",
+                NamedTextColor.LIGHT_PURPLE);
+        p.playSound(Msg.click());
+        // Рамка пустая — дальше игрок вставляет око обычным способом
+    }
+
+    private void restoreAllBroken() {
+        for (EndState.Frame f : state.frames.values()) {
+            if (!f.broken) {
+                continue;
+            }
+            Location l = f.loc();
+            if (l == null) {
+                continue;
+            }
+            Block b = l.getBlock();
+            if (b.getType() == BROKEN_BLOCK) {
+                b.setType(Material.END_PORTAL_FRAME, false);
+                if (b.getBlockData() instanceof EndPortalFrame data) {
+                    data.setEye(false);
+                    b.setBlockData(data, false);
+                }
+            }
+            f.broken = false;
+            f.repairTier = "normal";
+            f.repairHead = "";
+        }
+        state.save();
+    }
+
     // ================================================================== админ
     public void forceScan() {
         Location l = manager.strongholdLocation();
@@ -766,6 +1038,7 @@ public final class EndPortal implements Listener {
         }
         displays.clear();
         phases.clear();
+        restoreAllBroken();
         // Чиним рамки, которые могли быть выбиты при подгрузке чанков
         repairFrames();
         // Гасим глаза в найденных рамках и убираем уже открытый портал
@@ -791,6 +1064,9 @@ public final class EndPortal implements Listener {
     /** Восстанавливает рамки, которых не хватает в мире (например, выбитых). */
     private void repairFrames() {
         for (EndState.Frame f : new ArrayList<>(state.frames.values())) {
+            if (f.broken) {
+                continue; // только ручная сложная починка
+            }
             Location l = f.loc();
             if (l == null || !l.getChunk().isLoaded()) {
                 continue;
@@ -812,6 +1088,7 @@ public final class EndPortal implements Listener {
     }
 
     public void resetPortal() {
+        restoreAllBroken();
         state.frames.clear();
         displays.clear();
         state.lastCycleDay = -1;

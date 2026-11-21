@@ -21,6 +21,19 @@ public final class EndCfg {
         public int maxPerPortal = 1;
     }
 
+    /** Вариант головы для ультра-набора (weight — относительный шанс). */
+    public static final class HeadCfg {
+        public Material material = Material.ZOMBIE_HEAD;
+        public String name = "Голова зомби";
+        public int weight = 1;
+    }
+
+    /** Бафф за починку рамки. */
+    public static final class BuffCfg {
+        public String effect = "resistance";
+        public int amplifier = 1;
+    }
+
     public boolean enabled = true;
 
     // --- крепость
@@ -77,6 +90,29 @@ public final class EndCfg {
     // --- защита портала
     public int curseHours = 2;
     public int endBanHours = 2;
+    /** Эффекты (лечение/проклятие/молния) при попытке сломать рамку/спавнер.
+     *  По умолчанию ВЫКЛЮЧЕНО — рамка просто не ломается. */
+    public boolean breakEffects = false;
+
+    // --- обычный и ультра слом рамок (авто-ивенты)
+    public boolean normalBreakEnabled = true;
+    public int normalBreakStartDay = 100;
+    public int normalBreakInterval = 80;
+    public int normalBreakFrames = 4;
+    public double normalBreakChance = 0.40;
+    public boolean ultraBreakEnabled = true;
+    public int ultraBreakStartDay = 100;
+    public int ultraBreakInterval = 150;
+    public int ultraBreakFrames = 1;
+    public double ultraBreakChance = 0.40;
+
+    // --- наборы для сложной починки
+    public final List<PoolItem> normalRepair = new ArrayList<>();
+    public final List<PoolItem> ultraRepair = new ArrayList<>();
+    public final List<HeadCfg> ultraHeads = new ArrayList<>();
+    /** Сколько РЕАЛЬНЫХ дней длится бафф за починку рамки. */
+    public int repairBuffDays = 3;
+    public final List<BuffCfg> repairBuffs = new ArrayList<>();
 
     // --- внешние острова
     public int outerUnlockDay = 80;
@@ -114,6 +150,10 @@ public final class EndCfg {
         ConfigurationSection s = c.getConfigurationSection("end");
         if (s == null) {
             defaultPool(e);
+            defaultNormalRepair(e);
+            defaultUltraRepair(e);
+            defaultHeads(e);
+            defaultRepairBuffs(e);
             return e;
         }
         e.enabled = s.getBoolean("enabled", e.enabled);
@@ -161,6 +201,20 @@ public final class EndCfg {
 
         e.curseHours = s.getInt("protection.curse-hours", e.curseHours);
         e.endBanHours = s.getInt("protection.end-ban-hours", e.endBanHours);
+        e.breakEffects = s.getBoolean("protection.break-effects", e.breakEffects);
+
+        e.normalBreakEnabled = s.getBoolean("break.normal.enabled", e.normalBreakEnabled);
+        e.normalBreakStartDay = s.getInt("break.normal.start-day", e.normalBreakStartDay);
+        e.normalBreakInterval = Math.max(1, s.getInt("break.normal.interval-days", e.normalBreakInterval));
+        e.normalBreakFrames = Math.max(1, s.getInt("break.normal.frames", e.normalBreakFrames));
+        e.normalBreakChance = s.getDouble("break.normal.chance", e.normalBreakChance);
+        e.ultraBreakEnabled = s.getBoolean("break.ultra.enabled", e.ultraBreakEnabled);
+        e.ultraBreakStartDay = s.getInt("break.ultra.start-day", e.ultraBreakStartDay);
+        e.ultraBreakInterval = Math.max(1, s.getInt("break.ultra.interval-days", e.ultraBreakInterval));
+        e.ultraBreakFrames = Math.max(1, s.getInt("break.ultra.frames", e.ultraBreakFrames));
+        e.ultraBreakChance = s.getDouble("break.ultra.chance", e.ultraBreakChance);
+
+        e.repairBuffDays = Math.max(1, s.getInt("repair.buff.real-days", e.repairBuffDays));
 
         e.outerUnlockDay = s.getInt("outer-islands.unlock-day", e.outerUnlockDay);
         e.outerMaxDistance = s.getDouble("outer-islands.max-distance", e.outerMaxDistance);
@@ -184,12 +238,78 @@ public final class EndCfg {
         if (e.pool.isEmpty()) {
             defaultPool(e);
         }
+
+        loadList(e.normalRepair, s.getMapList("repair.normal.items"));
+        if (e.normalRepair.isEmpty()) {
+            defaultNormalRepair(e);
+        }
+        loadList(e.ultraRepair, s.getMapList("repair.ultra.items"));
+        if (e.ultraRepair.isEmpty()) {
+            defaultUltraRepair(e);
+        }
+        for (java.util.Map<?, ?> raw : s.getMapList("repair.ultra.heads")) {
+            Object mat = raw.get("material");
+            if (mat == null) {
+                continue;
+            }
+            Material m = Material.matchMaterial(String.valueOf(mat));
+            if (m == null) {
+                org.bukkit.Bukkit.getLogger().warning(
+                        "[xmusya-hard] repair.ultra.heads: неизвестный материал " + mat);
+                continue;
+            }
+            HeadCfg h = new HeadCfg();
+            h.material = m;
+            h.name = raw.get("name") == null ? prettify(m) : String.valueOf(raw.get("name"));
+            Object w = raw.get("weight");
+            h.weight = w instanceof Number n ? Math.max(1, n.intValue()) : 1;
+            e.ultraHeads.add(h);
+        }
+        if (e.ultraHeads.isEmpty()) {
+            defaultHeads(e);
+        }
+        for (java.util.Map<?, ?> raw : s.getMapList("repair.buff.effects")) {
+            Object eff = raw.get("effect");
+            if (eff == null) {
+                continue;
+            }
+            BuffCfg b = new BuffCfg();
+            b.effect = String.valueOf(eff).toLowerCase(java.util.Locale.ROOT)
+                    .replace("minecraft:", "").trim();
+            Object amp = raw.get("amplifier");
+            b.amplifier = amp instanceof Number n ? Math.max(0, n.intValue()) : 1;
+            e.repairBuffs.add(b);
+        }
+        if (e.repairBuffs.isEmpty()) {
+            defaultRepairBuffs(e);
+        }
         if (e.cycleResetMin > e.cycleResetMax) {
             int t = e.cycleResetMin;
             e.cycleResetMin = e.cycleResetMax;
             e.cycleResetMax = t;
         }
         return e;
+    }
+
+    private static void loadList(List<PoolItem> out, List<java.util.Map<?, ?>> list) {
+        for (java.util.Map<?, ?> raw : list) {
+            Object mat = raw.get("material");
+            if (mat == null) {
+                continue;
+            }
+            Material m = Material.matchMaterial(String.valueOf(mat));
+            if (m == null) {
+                org.bukkit.Bukkit.getLogger().warning(
+                        "[xmusya-hard] repair: неизвестный материал " + mat);
+                continue;
+            }
+            PoolItem pi = new PoolItem();
+            pi.material = m;
+            pi.name = raw.get("name") == null ? prettify(m) : String.valueOf(raw.get("name"));
+            Object amt = raw.get("amount");
+            pi.amount = amt instanceof Number n ? Math.max(1, n.intValue()) : 1;
+            out.add(pi);
+        }
     }
 
     private static void loadPool(EndCfg e, List<java.util.Map<?, ?>> list) {
@@ -235,6 +355,68 @@ public final class EndCfg {
         add(e, Material.NETHERITE_INGOT, "Незеритовый слиток", 1, 1);
         add(e, Material.NETHER_STAR, "Звезда Незера", 1, 1);
         add(e, Material.GOLD_BLOCK, "Блок золота", 2, 1);
+    }
+
+    private static void defaultNormalRepair(EndCfg e) {
+        e.normalRepair.clear();
+        addTo(e.normalRepair, Material.IRON_BLOCK, "Блок железа", 8);
+        addTo(e.normalRepair, Material.GOLD_BLOCK, "Блок золота", 2);
+        addTo(e.normalRepair, Material.DIAMOND, "Алмазы", 4);
+        addTo(e.normalRepair, Material.EMERALD, "Изумруды", 2);
+        addTo(e.normalRepair, Material.NETHERITE_INGOT, "Незеритовый слиток", 1);
+    }
+
+    private static void defaultUltraRepair(EndCfg e) {
+        e.ultraRepair.clear();
+        addTo(e.ultraRepair, Material.NETHERITE_BLOCK, "Блок незерита", 1);
+        addTo(e.ultraRepair, Material.HEAVY_CORE, "Тяжёлое ядро", 1);
+        addTo(e.ultraRepair, Material.NETHER_STAR, "Звезда Незера", 1);
+        addTo(e.ultraRepair, Material.ENCHANTED_GOLDEN_APPLE, "Зачарованное золотое яблоко", 2);
+        addTo(e.ultraRepair, Material.TOTEM_OF_UNDYING, "Тотем бессмертия", 1);
+        addTo(e.ultraRepair, Material.CONDUIT, "Кондуит", 1);
+        addTo(e.ultraRepair, Material.TRIDENT, "Трезубец", 1);
+        addTo(e.ultraRepair, Material.SPONGE, "Губка", 1);
+        addTo(e.ultraRepair, Material.SNIFFER_EGG, "Яйцо нюхача", 1);
+        addTo(e.ultraRepair, Material.OMINOUS_TRIAL_KEY, "Зловещий ключ", 1);
+        addTo(e.ultraRepair, Material.CHORUS_FLOWER, "Цветок хоруса", 1);
+        addTo(e.ultraRepair, Material.HEART_OF_THE_SEA, "Сердце моря", 1);
+    }
+
+    private static void defaultHeads(EndCfg e) {
+        e.ultraHeads.clear();
+        e.ultraHeads.add(head(Material.ZOMBIE_HEAD, "Голова зомби", 55));
+        e.ultraHeads.add(head(Material.CREEPER_HEAD, "Голова крипера", 30));
+        e.ultraHeads.add(head(Material.PIGLIN_HEAD, "Голова пиглина", 15));
+    }
+
+    private static HeadCfg head(Material m, String name, int weight) {
+        HeadCfg h = new HeadCfg();
+        h.material = m;
+        h.name = name;
+        h.weight = weight;
+        return h;
+    }
+
+    private static void defaultRepairBuffs(EndCfg e) {
+        e.repairBuffs.clear();
+        e.repairBuffs.add(buff("resistance", 1));
+        e.repairBuffs.add(buff("regeneration", 1));
+        e.repairBuffs.add(buff("strength", 1));
+    }
+
+    private static BuffCfg buff(String effect, int amp) {
+        BuffCfg b = new BuffCfg();
+        b.effect = effect;
+        b.amplifier = amp;
+        return b;
+    }
+
+    private static void addTo(List<PoolItem> out, Material m, String name, int amount) {
+        PoolItem pi = new PoolItem();
+        pi.material = m;
+        pi.name = name;
+        pi.amount = amount;
+        out.add(pi);
     }
 
     private static void add(EndCfg e, Material m, String name, int amount, int max) {

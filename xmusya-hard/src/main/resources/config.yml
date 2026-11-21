@@ -26,6 +26,10 @@
 #                             (дальше они остаются открытыми навсегда)
 # ============================================================
 
+# Префикс всех сообщений плагина в чате.
+# Поддерживаются коды &a-f, &l, &r и MiniMessage-теги (<red>…</red>).
+prefix: "&c[XMH] "
+
 border:
   start: 650
   mid1: 1250
@@ -40,6 +44,15 @@ bloodmoon:
   # 1 = II, -1 = не выдавать совсем).
   mob-strength: 0
   mob-speed: 0
+  # Если игрок УЖЕ был ниже mine-y (шахта) или выше height-y (высотник)
+  # в момент начала Кровавой луны — она на него не действует, пока он
+  # остаётся в этом диапазоне. Вернулся в обычные высоты — исключение
+  # снимается до конца ночи.
+  mine-y: 40
+  height-y: 120
+  # С какого дня в Кровавую луну появляются визер-скелеты, утопленники
+  # и вексы.
+  endgame-mobs-day: 60
 
 # Стартовые Спешка I + Скорость I выдаются до этого дня включительно.
 starter-buffs-until-day: 4
@@ -395,6 +408,66 @@ end:
       - { material: minecraft:nether_star,    name: "Звезда Незера",     amount: 1,  max-per-portal: 1 }
       - { material: minecraft:gold_block,     name: "Блок золота",       amount: 2,  max-per-portal: 1 }
 
+  # Автоматические ивенты слома рамок портала.
+  break:
+    # Обычный слом: раз в 80 дней, начиная со 100-го дня,
+    # с шансом 40% ломает 4 случайные рамки.
+    normal:
+      enabled: true
+      start-day: 100
+      interval-days: 80
+      chance: 0.40
+      frames: 4
+    # Ультра-слом: раз в 150 дней, начиная со 100-го дня,
+    # с шансом 40% ломает 1 рамку. Для починки нужен ультра-набор.
+    ultra:
+      enabled: true
+      start-day: 100
+      interval-days: 150
+      chance: 0.40
+      frames: 1
+
+  # Сложная ручная починка сломанных рамок.
+  # Сломанная рамка превращается в заглушку (плачущий обсидиан):
+  # ПКМ по ней с нужными предметами в инвентаре — восстановить.
+  # После починки рамку ещё нужно активировать оком и предметом из portal.items.
+  repair:
+    normal:
+      items:
+        - { material: minecraft:iron_block,      name: "Блок железа",       amount: 8 }
+        - { material: minecraft:gold_block,      name: "Блок золота",       amount: 2 }
+        - { material: minecraft:diamond,         name: "Алмазы",            amount: 4 }
+        - { material: minecraft:emerald,         name: "Изумруды",          amount: 2 }
+        - { material: minecraft:netherite_ingot, name: "Незеритовый слиток", amount: 1 }
+    ultra:
+      # Базовый набор ультра-починки (плюс одна голова из heads).
+      items:
+        - { material: minecraft:netherite_block,       name: "Блок незерита",             amount: 1 }
+        - { material: minecraft:heavy_core,            name: "Тяжёлое ядро",              amount: 1 }
+        - { material: minecraft:nether_star,           name: "Звезда Незера",             amount: 1 }
+        - { material: minecraft:enchanted_golden_apple, name: "Зачарованное золотое яблоко", amount: 2 }
+        - { material: minecraft:totem_of_undying,      name: "Тотем бессмертия",          amount: 1 }
+        - { material: minecraft:conduit,               name: "Кондуит",                   amount: 1 }
+        - { material: minecraft:trident,               name: "Трезубец",                  amount: 1 }
+        - { material: minecraft:sponge,                name: "Губка",                     amount: 1 }
+        - { material: minecraft:sniffer_egg,           name: "Яйцо нюхача",               amount: 1 }
+        - { material: minecraft:ominous_trial_key,     name: "Зловещий ключ",             amount: 1 }
+        - { material: minecraft:chorus_flower,         name: "Цветок хоруса",             amount: 1 }
+        - { material: minecraft:heart_of_the_sea,      name: "Сердце моря",               amount: 1 }
+      # Одна случайная голова. weight — относительный шанс;
+      # голова пиглина — самый сложный (редкий) вариант.
+      heads:
+        - { material: minecraft:zombie_head,  name: "Голова зомби",   weight: 55 }
+        - { material: minecraft:creeper_head, name: "Голова крипера", weight: 30 }
+        - { material: minecraft:piglin_head,  name: "Голова пиглина", weight: 15 }
+    # Награда починщику: сильные эффекты на несколько РЕАЛЬНЫХ дней.
+    buff:
+      real-days: 3
+      effects:
+        - { effect: resistance,   amplifier: 1 }
+        - { effect: regeneration, amplifier: 1 }
+        - { effect: strength,     amplifier: 1 }
+
   cycle:
     # С этого дня каждые interval-days портал гаснет и 1..N рамок
     # сбрасываются с новыми предметами.
@@ -408,6 +481,10 @@ end:
     # визуальный взрыв, проклятие и запрет входа в Энд.
     curse-hours: 6
     end-ban-hours: 6
+    # Эффекты при попытке сломать рамку/портал/спавнер
+    # (лечение, проклятие, молния, взрыв). По умолчанию ВЫКЛЮЧЕНО:
+    # блок просто не ломается. true = включить старые эффекты.
+    break-effects: false
 
   outer-islands:
     # Внешние острова Энда закрыты до этого дня (шлюзы + отталкивание).

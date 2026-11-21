@@ -31,6 +31,12 @@ public final class EndState {
         public String itemName = "";
         public int amount = 1;
         public boolean filled = false;
+        /** Рамка сломана и требует сложной починки. */
+        public boolean broken = false;
+        /** Набор для починки: "normal" или "ultra". */
+        public String repairTier = "normal";
+        /** Голова, выбранная для ультра-набора (материал). */
+        public String repairHead = "";
         /** Ник игрока, вставившего око (для закрытой рамки). */
         public String contributor = "";
 
@@ -58,6 +64,9 @@ public final class EndState {
 
     /** Последний день, когда сбрасывался портал (защита от дублей). */
     public int lastCycleDay = -1;
+    /** Последний день обычного/ультра слома рамок. */
+    public int lastNormalBreakDay = -1;
+    public int lastUltraBreakDay = -1;
 
     /** Баффы за рамки: игрок -> (имя эффекта -> [amplifier, untilMillis]). */
     public final Map<UUID, Map<String, long[]>> buffs = new HashMap<>();
@@ -98,6 +107,8 @@ public final class EndState {
         strongholdZ = y.getInt("stronghold.z");
         strongholdChosen = y.getBoolean("stronghold.chosen", false);
         lastCycleDay = y.getInt("cycle.last-day", -1);
+        lastNormalBreakDay = y.getInt("break.last-normal-day", -1);
+        lastUltraBreakDay = y.getInt("break.last-ultra-day", -1);
 
         disabledChunks.addAll(y.getStringList("disabled-chunks"));
 
@@ -117,6 +128,9 @@ public final class EndState {
                 f.itemName = s.getString("name", "");
                 f.amount = s.getInt("amount", 1);
                 f.filled = s.getBoolean("filled", false);
+                f.broken = s.getBoolean("broken", false);
+                f.repairTier = s.getString("repair-tier", "normal");
+                f.repairHead = s.getString("repair-head", "");
                 f.contributor = s.getString("contributor", "");
                 frames.put(f.key(), f);
             }
@@ -202,6 +216,8 @@ public final class EndState {
         y.set("stronghold.z", strongholdZ);
         y.set("stronghold.chosen", strongholdChosen);
         y.set("cycle.last-day", lastCycleDay);
+        y.set("break.last-normal-day", lastNormalBreakDay);
+        y.set("break.last-ultra-day", lastUltraBreakDay);
         y.set("disabled-chunks", new ArrayList<>(disabledChunks));
 
         for (Map.Entry<String, Frame> e : frames.entrySet()) {
@@ -215,6 +231,9 @@ public final class EndState {
             y.set(p + "name", f.itemName);
             y.set(p + "amount", f.amount);
             y.set(p + "filled", f.filled);
+            y.set(p + "broken", f.broken);
+            y.set(p + "repair-tier", f.repairTier);
+            y.set(p + "repair-head", f.repairHead);
             y.set(p + "contributor", f.contributor);
         }
 
@@ -258,6 +277,8 @@ public final class EndState {
         frames.clear();
         disabledChunks.clear();
         lastCycleDay = -1;
+        lastNormalBreakDay = -1;
+        lastUltraBreakDay = -1;
         buffs.clear();
         bonusHearts.clear();
         awardedHearts.clear();
