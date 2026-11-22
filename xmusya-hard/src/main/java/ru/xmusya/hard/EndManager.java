@@ -1037,8 +1037,9 @@ public final class EndManager implements Listener {
         state.save();
         p.addPotionEffect(new PotionEffect(PotionEffectType.WEAKNESS, 60, 0, true, false, true));
         p.addPotionEffect(new PotionEffect(PotionEffectType.MINING_FATIGUE, 60, 1, true, false, true));
-        Msg.chat(p, Msg.c(reason + " Проклятие на " + cfg.curseHours + " ч и запрет входа в Энд.",
-                NamedTextColor.DARK_RED));
+        Msg.chat(p, Msg.legacy(Messages.format("end.curse",
+                        "{0}&4 Проклятие на {1} ч и запрет входа в Энд.",
+                        reason, cfg.curseHours), NamedTextColor.DARK_RED));
         if (plugin.achievements != null) {
             plugin.achievements.onCurse(p);
         }
@@ -1190,12 +1191,14 @@ public final class EndManager implements Listener {
         UUID prev = state.eggKeeper;
         state.eggKeeper = p.getUniqueId();
         state.save();
-        Msg.broadcast("Хранитель яйца дракона: " + p.getName()
-                + ". Бесконечные Спешка II и Скорость I.", NamedTextColor.LIGHT_PURPLE);
+        Msg.broadcast(Messages.format("end.egg_keeper",
+                "Хранитель яйца дракона: {0}. Бесконечные Спешка II и Скорость I.",
+                p.getName()), NamedTextColor.LIGHT_PURPLE);
         if (prev != null && !prev.equals(p.getUniqueId())) {
             Player old = Bukkit.getPlayer(prev);
             if (old != null) {
-                Msg.chat(old, "Права хранителя яйца дракона перешли к " + p.getName() + ".",
+                Msg.chat(old, Messages.format("end.egg_keeper_prev",
+                        "Права хранителя яйца дракона перешли к {0}.", p.getName()),
                         NamedTextColor.GRAY);
             }
         }

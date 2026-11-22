@@ -1,6 +1,7 @@
 package ru.xmusya.hard;
 
 import io.papermc.paper.datapack.Datapack;
+import org.bukkit.plugin.java.JavaPlugin;
 import net.kyori.adventure.text.format.NamedTextColor;
 import org.bukkit.Bukkit;
 import org.bukkit.Material;
@@ -27,6 +28,7 @@ import org.bukkit.inventory.ItemStack;
 import org.bukkit.persistence.PersistentDataType;
 
 import java.io.File;
+import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
@@ -38,6 +40,7 @@ import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Properties;
 import java.util.Set;
 import java.util.UUID;
 
@@ -204,32 +207,85 @@ public final class Achievements implements Listener {
 
     // ================================================================== датапак
     /** Кладёт bundled-датапак в world/datapacks и включает его. */
-    private void installDatapack() {
-        Collection<? extends World> worlds = Bukkit.getWorlds();
-        if (worlds.isEmpty()) {
+    /**
+     * Кладёт пак в {@code <worldContainer>/<level-name>/datapacks} без
+     * DatapackManager — можно вызывать из {@code onLoad()}, до загрузки мира.
+     */
+    public static void installPackEarly(JavaPlugin plugin) {
+        if (!achievementsEnabledOnDisk(plugin)) {
             return;
         }
-        File world = worlds.iterator().next().getWorldFolder();
-        File dir = new File(world, "datapacks");
-        dir.mkdirs();
-        File out = new File(dir, "xmusya-hard-achievements.zip");
+        File out = new File(packsDir(plugin), "xmusya-hard-achievements.zip");
+        File dir = out.getParentFile();
+        if (dir != null) {
+            dir.mkdirs();
+        }
         try (InputStream in = plugin.getResource("xmusya-hard-achievements.zip")) {
             if (in == null) {
                 plugin.getLogger().warning("В jar нет xmusya-hard-achievements.zip —"
                         + " ачивки будут без ванильных тостов.");
                 return;
             }
-            copy(in, out);
+            boolean changed = copy(in, out);
+            plugin.getLogger().info((changed ? "Датапак ачивок записан: "
+                    : "Датапак ачивок уже на месте: ") + out.getPath());
         } catch (IOException ex) {
             plugin.getLogger().warning("Не удалось установить датапак ачивок: " + ex.getMessage());
-            return;
+        }
+    }
+
+    /** Папка datapacks основного мира (имя мира из server.properties). */
+    private static File packsDir(JavaPlugin plugin) {
+        File container = null;
+        try {
+            container = Bukkit.getWorldContainer();
+        } catch (RuntimeException | LinkageError ignored) {
+        }
+        if (container == null) {
+            File data = plugin.getDataFolder();
+            container = new File(data.getParentFile().getParentFile(), ".");
+        }
+        String level = "world";
+        File props = new File(container, "server.properties");
+        if (props.isFile()) {
+            Properties p = new Properties();
+            try (InputStream in = new FileInputStream(props)) {
+                p.load(in);
+            } catch (IOException ignored) {
+            }
+            String l = p.getProperty("level-name");
+            if (l != null && !l.isBlank()) {
+                level = l;
+            }
+        }
+        return new File(new File(container, level), "datapacks");
+    }
+
+    private static boolean achievementsEnabledOnDisk(JavaPlugin plugin) {
+        File cfg = new File(plugin.getDataFolder(), "config.yml");
+        if (!cfg.isFile()) {
+            return true;
         }
         try {
+            return YamlConfiguration.loadConfiguration(cfg)
+                    .getBoolean("achievements.enabled", true);
+        } catch (RuntimeException ex) {
+            return true;
+        }
+    }
+
+    /** Рантайм-проверка: пак уже есть — включаем и запоминаем id ачивок. */
+    private void installDatapack() {
+        installPackEarly(plugin);
+        try {
             Bukkit.getDatapackManager().refreshPacks();
-            Datapack pack = Bukkit.getDatapackManager().getPack(PACK);
+            Datapack pack = findPack();
             if (pack == null) {
-                plugin.getLogger().info("Датапак ачивок установлен, но ещё не виден —"
-                        + " он включится при следующем запуске сервера.");
+                StringBuilder sb = new StringBuilder();
+                for (Datapack p : Bukkit.getDatapackManager().getPacks()) {
+                    sb.append(p.getName()).append(' ');
+                }
+                plugin.getLogger().info("Датапак ачивок пока не виден. Известные паки: " + sb);
             } else {
                 if (!pack.isEnabled()) {
                     pack.setEnabled(true);
@@ -244,6 +300,20 @@ public final class Achievements implements Listener {
         // Paper может применить пак не мгновенно — перечитаем позже
         Bukkit.getScheduler().runTaskLater(plugin, this::readKnown, 60L);
         Bukkit.getScheduler().runTaskLater(plugin, this::readKnown, 200L);
+        Bukkit.getScheduler().runTaskLater(plugin, this::readKnown, 400L);
+    }
+
+    private Datapack findPack() {
+        Datapack byName = Bukkit.getDatapackManager().getPack(PACK);
+        if (byName != null) {
+            return byName;
+        }
+        for (Datapack p : Bukkit.getDatapackManager().getPacks()) {
+            if (p.getName().endsWith("xmusya-hard-achievements.zip")) {
+                return p;
+            }
+        }
+        return null;
     }
 
     private void readKnown() {
@@ -265,7 +335,7 @@ public final class Achievements implements Listener {
                 java.nio.file.Files.readAllBytes(b.toPath()));
     }
 
-    private static void copy(InputStream in, File out) throws IOException {
+    private static boolean copy(InputStream in, File out) throws IOException {
         File tmp = new File(out.getParentFile(), out.getName() + ".tmp");
         try (OutputStream os = new FileOutputStream(tmp)) {
             byte[] buf = new byte[8192];
@@ -277,12 +347,12 @@ public final class Achievements implements Listener {
         if (out.isFile() && sameContent(out, tmp)) {
             // содержимое не изменилось — не трогаем (иначе Paper перезагрузит пак)
             tmp.delete();
-            return;
+            return false;
         }
         if (out.exists()) {
             out.delete();
         }
-        tmp.renameTo(out);
+        return tmp.renameTo(out);
     }
 
     // ================================================================== выдача
@@ -310,8 +380,8 @@ public final class Achievements implements Listener {
         String[] parts = INFO.getOrDefault(id, "Достижение|").split("\\|", 2);
         String title = parts.length > 0 ? parts[0] : id;
         p.playSound(p.getLocation(), "ui.toast.challenge_complete", 1f, 1f);
-        Msg.chat(p, Msg.c("Достижение: ", NamedTextColor.GOLD)
-                .append(Msg.bold(title, NamedTextColor.YELLOW)));
+        Msg.chat(p, Msg.legacy(Messages.format("achievements.granted",
+                "&6Достижение: &e{0}", title)));
         save();
     }
 

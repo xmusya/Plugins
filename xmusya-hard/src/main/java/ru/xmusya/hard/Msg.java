@@ -73,6 +73,16 @@ public final class Msg {
         return Component.text(text, color, TextDecoration.BOLD);
     }
 
+    /** Строка с &amp;-кодами; цвет по умолчанию не навязывается. */
+    public static Component legacy(String text) {
+        return legacyPrivate(text, null);
+    }
+
+    /** Строка с &amp;-кодами; цвет по умолчанию не навязывается. */
+    public static Component legacy(String text, NamedTextColor color) {
+        return legacyPrivate(text, color);
+    }
+
     public static Component prefix() {
         return prefix;
     }
@@ -117,8 +127,7 @@ public final class Msg {
         Bukkit.getConsoleSender().sendMessage(msg);
     }
 
-    /** Строка с &amp;-кодами, покрашенная в цвет по умолчанию. */
-    private static Component legacy(String text, NamedTextColor color) {
+    private static Component legacyPrivate(String text, NamedTextColor color) {
         Component base = LegacyComponentSerializer.legacyAmpersand().deserialize(text);
         if (color == null) {
             return base;

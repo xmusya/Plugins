@@ -28,7 +28,16 @@ public final class ConfigMerge {
      * @return сколько ключей было добавлено
      */
     public static int merge(File folder, InputStream defaultsStream) {
-        File file = new File(folder, "config.yml");
+        return merge(folder, "config.yml", defaultsStream);
+    }
+
+    /**
+     * То же для произвольного YAML-файла (например messages.yml).
+     *
+     * @return сколько ключей было добавлено
+     */
+    public static int merge(File folder, String fileName, InputStream defaultsStream) {
+        File file = new File(folder, fileName);
         if (!file.exists()) {
             return 0;
         }
@@ -79,7 +88,7 @@ public final class ConfigMerge {
         // Резервная копия
         try {
             java.nio.file.Files.copy(file.toPath(),
-                    new File(folder, "config.yml.bak").toPath(),
+                    new File(folder, fileName + ".bak").toPath(),
                     java.nio.file.StandardCopyOption.REPLACE_EXISTING);
         } catch (IOException ignored) {
         }

@@ -157,7 +157,8 @@ public final class GuideBook implements Listener {
             long elapsed = now - prev;
             if (elapsed < COOLDOWN_MILLIS) {
                 long leftSec = (COOLDOWN_MILLIS - elapsed + 999L) / 1000L;
-                Msg.chat(p, "Подождите ещё " + leftSec + " сек. перед повторным получением книги-гайда.");
+                Msg.chat(p, Messages.format("guide.cooldown",
+                        "Подождите ещё {0} сек. перед повторным получением книги-гайда.", leftSec));
                 return false;
             }
         }
@@ -180,7 +181,8 @@ public final class GuideBook implements Listener {
             p.getPersistentDataContainer().set(key(), PersistentDataType.BYTE, (byte) 1);
         } catch (RuntimeException ignored) {
         }
-        Msg.chat(p, "Вам выдана книга-гайд. Откройте её в инвентаре.");
+        Msg.chat(p, Messages.raw("guide.received",
+                "Вам выдана книга-гайд. Откройте её в инвентаре."));
         if (plugin.achievements != null) {
             plugin.achievements.onGuide(p);
         }

@@ -32,6 +32,9 @@ import org.bukkit.event.inventory.InventoryOpenEvent;
 import org.bukkit.event.player.PlayerBedEnterEvent;
 import org.bukkit.event.player.PlayerInteractEntityEvent;
 import org.bukkit.event.player.PlayerJoinEvent;
+import org.bukkit.event.raid.RaidFinishEvent;
+import org.bukkit.event.raid.RaidSpawnWaveEvent;
+import org.bukkit.event.raid.RaidStopEvent;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.MerchantInventory;
 import org.bukkit.plugin.java.JavaPlugin;
@@ -111,7 +114,9 @@ public final class XmusyaHard extends JavaPlugin implements Listener {
     public int raidIllusionerFromWave = 2;
     public double raidIllusionerChance = 0.35;
     public int raidIllusionerMax = 2;
-    private final Map<Integer, List<UUID>> raidIllusioners = new HashMap<>();
+    private final Map<Raid, List<UUID>> raidIllusioners = new HashMap<>();
+    /** Сколько волн рейда уже видели (ключ — сам рейд). */
+    private final Map<Raid, Integer> raidWaves = new HashMap<>();
     /** Анти-кемп (вексы/фантомы) действует и на игроков-исключений (шахта/высота). */
     public boolean bmExemptBlocksAntiCamp = false;
     /** Игроки, спрятанные в шахте/на высоте на момент старта КЛ. */
@@ -160,6 +165,13 @@ public final class XmusyaHard extends JavaPlugin implements Listener {
 
     // ------------------------------------------------------------------ включение
     @Override
+    public void onLoad() {
+        // Датапак ачивок кладём ДО загрузки мира: иначе Paper не регистрирует
+        // новые advancement'ы, и /advancement grant ругается «unknown»).
+        Achievements.installPackEarly(this);
+    }
+
+    @Override
     public void onEnable() {
         I = this;
         saveDefaultConfig();
@@ -170,6 +182,7 @@ public final class XmusyaHard extends JavaPlugin implements Listener {
                     + " (старые значения сохранены, копия — config.yml.bak).");
         }
         loadConfig();
+        Messages.load(this);
         bmWitherKey = new NamespacedKey(this, "bm_wither_skeleton");
         loadState();
         // Дополнительная проверка «мир сброшен»: состояние опережает мир
@@ -290,6 +303,9 @@ public final class XmusyaHard extends JavaPlugin implements Listener {
     // ------------------------------------------------------------------ конфиг
     public void loadConfig() {
         reloadConfig();
+        if (Messages.class != null) { // нет циклической зависимости при статической инициализации
+            // (файлmessages.yml грузится в onEnable)
+        }
         borderStart = getConfig().getInt("border.start", 650);
         borderMid1 = getConfig().getInt("border.mid1", 1250);
         borderMid2 = getConfig().getInt("border.mid2", 2500);
@@ -742,7 +758,8 @@ public final class XmusyaHard extends JavaPlugin implements Listener {
                 if (!phasesPaused) {
                     gamerule("advance_time", true);
                     gamerule("advance_weather", true);
-                    Msg.broadcast("Живой игрок в сети. Ход времени, погоды и дней возобновлен.",
+                    Msg.broadcast(Messages.format("time.players_back",
+                            "Живой игрок в сети. Ход времени, погоды и дней возобновлен."),
                             NamedTextColor.GREEN);
                 }
             }
@@ -752,17 +769,17 @@ public final class XmusyaHard extends JavaPlugin implements Listener {
                 autoPaused = true;
                 gamerule("advance_time", false);
                 gamerule("advance_weather", false);
-                Msg.broadcast("На сервере нет живых игроков (30 сек). Мир и таймер дней "
-                        + "поставлены на авто-паузу.", NamedTextColor.YELLOW);
+                Msg.broadcast(Messages.format("time.no_players",
+                        "На сервере нет живых игроков (30 сек). Мир и таймер дней "
+                        + "поставлены на авто-паузу."), NamedTextColor.YELLOW);
             }
         }
     }
 
     private void onNewDay(int day) {
         Msg.broadcastRaw(Msg.prefix()
-                .append(Msg.c("Наступил день ", NamedTextColor.GRAY))
-                .append(Msg.bold(String.valueOf(day), NamedTextColor.YELLOW))
-                .append(Msg.c(".", NamedTextColor.GRAY)));
+                .append(Msg.c(Messages.format("day.new_day", "Наступил день {0}.", day),
+                        NamedTextColor.GRAY)));
         growBorder(day);
         applyRules();
         checkPhase();
@@ -786,11 +803,13 @@ public final class XmusyaHard extends JavaPlugin implements Listener {
         if (day == 11) {
             borderSize = borderMid1;
             applyBorder(borderMid1, 200L);
-            Msg.broadcast("Барьер расширяется до " + borderMid1 + " блоков.", NamedTextColor.AQUA);
+            Msg.broadcast(Messages.format("border.expand",
+                    "Барьер расширяется до {0} блоков.", borderMid1), NamedTextColor.AQUA);
         } else if (day == 21) {
             borderSize = borderMid2;
             applyBorder(borderMid2, 300L);
-            Msg.broadcast("Барьер расширяется до " + borderMid2 + " блоков.", NamedTextColor.AQUA);
+            Msg.broadcast(Messages.format("border.expand",
+                    "Барьер расширяется до {0} блоков.", borderMid2), NamedTextColor.AQUA);
         } else if (day >= 31) {
             if (borderSize >= borderMax) {
                 return;
@@ -798,7 +817,8 @@ public final class XmusyaHard extends JavaPlugin implements Listener {
             int add = dailyBorderNow();
             borderSize = Math.min(borderMax, borderSize + add);
             applyBorder(borderSize, 100L);
-            Msg.broadcast("Барьер вырос: " + (int) borderSize + " блоков.", NamedTextColor.AQUA);
+            Msg.broadcast(Messages.format("border.grow",
+                    "Барьер вырос: {0} блоков.", (int) borderSize), NamedTextColor.AQUA);
         }
     }
 
@@ -820,7 +840,8 @@ public final class XmusyaHard extends JavaPlugin implements Listener {
         if (pc != null && pc.border > borderSize) {
             borderSize = pc.border;
             applyBorder(borderSize, 200L);
-            Msg.broadcast("Барьер расширен до " + (int) borderSize + " блоков (новая фаза).",
+            Msg.broadcast(Messages.format("border.phase",
+                    "Барьер расширен до {0} блоков (новая фаза).", (int) borderSize),
                     NamedTextColor.AQUA);
         }
         applyRules();
@@ -892,8 +913,9 @@ public final class XmusyaHard extends JavaPlugin implements Listener {
                 achievements.check(pl);
             }
         }
-        Msg.broadcast("Фаза установлена администратором: " + target.name
-                + " (день " + day + ", барьер " + (int) borderSize + ").", NamedTextColor.GOLD);
+        Msg.broadcast(Messages.format("phase.set",
+                "Фаза установлена администратором: {0} (день {1}, барьер {2}).",
+                target.name, day, (int) borderSize), NamedTextColor.GOLD);
         saveState();
     }
 
@@ -956,7 +978,8 @@ public final class XmusyaHard extends JavaPlugin implements Listener {
             if (!canSeeSky(p)) {
                 p.addPotionEffect(new PotionEffect(PotionEffectType.DARKNESS, 140, 0, true, false, true));
                 p.addPotionEffect(new PotionEffect(PotionEffectType.HUNGER, 140, 0, true, false, true));
-                Msg.action(p, "Стены не спасут вас от Кровавой луны... Выйдите наружу!");
+                Msg.action(p, Messages.raw("bloodmoon.walls",
+                        "Стены не спасут вас от Кровавой луны... Выйдите наружу!"));
                 int count = 1 + rnd.nextInt(2);
                 for (int i = 0; i < count; i++) {
                     Location loc = randomOutdoorLocation(p.getWorld(), p.getLocation(), 14, 20);
@@ -982,7 +1005,8 @@ public final class XmusyaHard extends JavaPlugin implements Listener {
             }
             double y = p.getLocation().getY();
             if (y < bmMineY || y > bmHeightY) {
-                Msg.action(p, "Глубина и высота не скроют вас от ночной охоты!");
+                Msg.action(p, Messages.raw("bloodmoon.depth",
+                        "Глубина и высота не скроют вас от ночной охоты!"));
                 if (y < bmMineY) {
                     // в глубине — вексы прямо рядом с игроком
                     for (int i = 0; i < 2; i++) {
@@ -1097,9 +1121,11 @@ public final class XmusyaHard extends JavaPlugin implements Listener {
                 spawnBmMob(p, loc, pickBmType(currentDay >= bmEndgameDay));
             }
         }
-        Msg.broadcastRaw(Component.text("[КРОВАВАЯ ЛУНА] ", NamedTextColor.DARK_RED, TextDecoration.BOLD)
-                .append(Component.text("Наступила кровавая ночь! Сон и невидимость заблокированы, "
-                        + "монстры вышли на охоту!", NamedTextColor.RED)));
+        Msg.broadcastRaw(Msg.legacy(Messages.raw("bloodmoon.header", "&4[КРОВАВАЯ ЛУНА] "),
+                        NamedTextColor.DARK_RED)
+                .append(Msg.legacy(Messages.raw("bloodmoon.start",
+                        "Наступила кровавая ночь! Сон и невидимость заблокированы, "
+                        + "монстры вышли на охоту!"), NamedTextColor.RED)));
         saveState();
     }
 
@@ -1133,11 +1159,14 @@ public final class XmusyaHard extends JavaPlugin implements Listener {
             bmSurvived.merge(p.getUniqueId(), 1, Integer::sum);
             p.giveExpLevels(3);
             p.addPotionEffect(new PotionEffect(PotionEffectType.SATURATION, 100, 1, true, false, true));
-            p.sendMessage(Component.text("[КРОВАВАЯ ЛУНА] ", NamedTextColor.DARK_RED, TextDecoration.BOLD)
-                    .append(Component.text("Кровавая луна пережита! +1 к счетчику, +3 уровня опыта, "
-                            + "насыщение.", NamedTextColor.GOLD)));
+            p.sendMessage(Msg.legacy(Messages.raw("bloodmoon.header", "&4[КРОВАВАЯ ЛУНА] "),
+                            NamedTextColor.DARK_RED)
+                    .append(Msg.legacy(Messages.raw("bloodmoon.survived",
+                            "Кровавая луна пережита! +1 к счетчику, +3 уровня опыта, насыщение."),
+                            NamedTextColor.GOLD)));
         }
-        Msg.broadcast("Кровавая луна окончена. Погода ясная.", NamedTextColor.GOLD);
+        Msg.broadcast(Messages.raw("bloodmoon.over", "Кровавая луна окончена. Погода ясная."),
+                NamedTextColor.GOLD);
         saveState();
     }
 
@@ -1328,6 +1357,100 @@ public final class XmusyaHard extends JavaPlugin implements Listener {
         return Phases.HOSTILE_TYPES.contains(e.getType().getKey().toString());
     }
 
+    // ------------------------------------------------------------------ рейды
+    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+    public void onRaidWave(RaidSpawnWaveEvent e) {
+        if (!raidIllusionerEnabled) {
+            return;
+        }
+        Raid raid = e.getRaid();
+        if (raid == null) {
+            return;
+        }
+        int wave = raidWaves.merge(raid, 1, Integer::sum);
+        List<UUID> spawned = raidIllusioners.computeIfAbsent(raid, k -> new ArrayList<>());
+        if (spawned.size() >= raidIllusionerMax || wave < raidIllusionerFromWave) {
+            return;
+        }
+        // Первый иллюзионер — гарантированно, дальше с шансом
+        if (!spawned.isEmpty() && rnd.nextDouble() > raidIllusionerChance) {
+            return;
+        }
+        Location center = e.getPatrolLeader() != null
+                ? e.getPatrolLeader().getLocation() : raid.getLocation();
+        if (center == null || center.getWorld() == null) {
+            return;
+        }
+        Location loc = findRaidSpawn(center);
+        if (loc == null) {
+            return;
+        }
+        Entity ent = loc.getWorld().spawnEntity(loc, EntityType.ILLUSIONER);
+        ent.addScoreboardTag("xh_raid_illusioner");
+        if (ent instanceof Mob mob) {
+            mob.setRemoveWhenFarAway(false);
+            Player nearest = null;
+            double best = Double.MAX_VALUE;
+            for (Player pl : players()) {
+                if (!pl.getWorld().equals(loc.getWorld())) {
+                    continue;
+                }
+                double d = pl.getLocation().distanceSquared(loc);
+                if (d < best) {
+                    best = d;
+                    nearest = pl;
+                }
+            }
+            if (nearest != null) {
+                mob.setTarget(nearest);
+            }
+        }
+        spawned.add(ent.getUniqueId());
+        Msg.broadcast(Messages.raw("raid.illusioner", "В рейде появился иллюзионер!"),
+                NamedTextColor.DARK_PURPLE);
+    }
+
+    private Location findRaidSpawn(Location center) {
+        World w = center.getWorld();
+        for (int i = 0; i < 20; i++) {
+            double angle = rnd.nextDouble() * Math.PI * 2.0;
+            double dist = 4 + rnd.nextDouble() * 8;
+            int x = center.getBlockX() + (int) Math.round(Math.cos(angle) * dist);
+            int z = center.getBlockZ() + (int) Math.round(Math.sin(angle) * dist);
+            int y = w.getHighestBlockYAt(x, z) + 1;
+            Location loc = new Location(w, x + 0.5, y, z + 0.5);
+            if (loc.getBlock().isEmpty() && loc.clone().add(0, 1, 0).getBlock().isEmpty()) {
+                return loc;
+            }
+        }
+        return null;
+    }
+
+    @EventHandler(priority = EventPriority.MONITOR)
+    public void onRaidFinish(RaidFinishEvent e) {
+        removeRaidIllusioners(e.getRaid());
+    }
+
+    @EventHandler(priority = EventPriority.MONITOR)
+    public void onRaidStop(RaidStopEvent e) {
+        removeRaidIllusioners(e.getRaid());
+    }
+
+    /** Иллюзионеры не входят в волны Bukkit (Illusioner не Raider) — убираем их. */
+    private void removeRaidIllusioners(Raid raid) {
+        raidWaves.remove(raid);
+        List<UUID> list = raidIllusioners.remove(raid);
+        if (list == null) {
+            return;
+        }
+        for (UUID id : list) {
+            Entity e = Bukkit.getEntity(id);
+            if (e != null && e.isValid() && e.getScoreboardTags().contains("xh_raid_illusioner")) {
+                e.remove();
+            }
+        }
+    }
+
     // ------------------------------------------------------------------ мобы
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
     public void onEntitySpawn(EntitySpawnEvent event) {
@@ -1385,18 +1508,15 @@ public final class XmusyaHard extends JavaPlugin implements Listener {
     // ------------------------------------------------------------------ боссбары
     private Component mainBarName() {
         if (phase >= 0 && phase < Phases.COUNT) {
-            return Component.text("Фаза: ", NamedTextColor.GRAY)
-                    .append(Component.text(cfg().shortName, Phases.COLORS[Math.min(phase, Phases.COLORS.length - 1)], TextDecoration.BOLD))
-                    .append(Component.text(" | День ", NamedTextColor.GRAY))
-                    .append(Component.text(String.valueOf(currentDay), NamedTextColor.YELLOW))
-                    .append(Component.text(" из " + dayEndgame, NamedTextColor.GRAY));
+            return Msg.legacy(Messages.format("bossbar.phase",
+                            "&7Фаза: &e{0}&7 | День &e{1}&7 из &e{2}",
+                            cfg().shortName, currentDay, dayEndgame));
         }
         return Component.text("Xmusya Hard");
     }
 
     private Component bmWarningName() {
-        return Component.text("\u26a0 ", NamedTextColor.RED, TextDecoration.BOLD)
-                .append(Component.text("ВНИМАНИЕ: Завтра Кровавая луна! ", NamedTextColor.RED, TextDecoration.BOLD));
+        return Msg.legacy(Messages.raw("bossbar.warning", "&c⚠ Завтра Кровавая луна!"));
     }
 
     private void updateBossBars() {
@@ -1495,7 +1615,8 @@ public final class XmusyaHard extends JavaPlugin implements Listener {
             return;
         }
         event.setUseBed(org.bukkit.event.Event.Result.DENY);
-        Msg.action(event.getPlayer(), "Вы не можете уснуть во время Кровавой луны!");
+        Msg.action(event.getPlayer(), Messages.raw("bloodmoon.sleep_blocked",
+                "Вы не можете уснуть во время Кровавой луны!"));
         event.getPlayer().playSound(Msg.villagerNo());
     }
 
@@ -1509,8 +1630,8 @@ public final class XmusyaHard extends JavaPlugin implements Listener {
         if (t == EntityType.VILLAGER || t == EntityType.WANDERING_TRADER) {
             event.setCancelled(true);
             p.playSound(Msg.villagerNo());
-            Msg.action(p, "Торговля с жителями откроется на "
-                    + dayWhenTradeAllowed() + "-й день!");
+            Msg.action(p, Messages.format("trade.locked",
+                    "Торговля с жителями откроется на {0}-й день!", dayWhenTradeAllowed()));
         }
     }
 
@@ -1522,8 +1643,8 @@ public final class XmusyaHard extends JavaPlugin implements Listener {
         if (event.getInventory() instanceof MerchantInventory) {
             event.setCancelled(true);
             p.playSound(Msg.villagerNo());
-            Msg.action(p, "Торговля с жителями откроется на "
-                    + dayWhenTradeAllowed() + "-й день!");
+            Msg.action(p, Messages.format("trade.locked",
+                    "Торговля с жителями откроется на {0}-й день!", dayWhenTradeAllowed()));
         }
     }
 
@@ -1671,8 +1792,8 @@ public final class XmusyaHard extends JavaPlugin implements Listener {
                 return true;
             }
             int have = achievements.grantedOf(p).size();
-            Msg.chat(p, Msg.c("Достижения: ", NamedTextColor.GOLD)
-                    .append(Msg.bold(have + " / " + achievements.total(), NamedTextColor.YELLOW)));
+            Msg.chat(p, Msg.legacy(Messages.format("achievements.progress",
+                    "&6Достижения: &e{0} / {1}", have, achievements.total())));
             return true;
         }
 
@@ -1690,14 +1811,16 @@ public final class XmusyaHard extends JavaPlugin implements Listener {
                     w.setFullTime(w.getFullTime() + 24000L);
                     lastDaytime = (int) (w.getTime() % 24000L);
                 }
-                Msg.broadcast("День пропущен администратором.", NamedTextColor.GOLD);
+                Msg.broadcast(Messages.raw("time.skip", "День пропущен администратором."),
+                        NamedTextColor.GOLD);
                 saveState();
             }
             case "reset" -> reset();
             case "pause" -> {
                 phasesPaused = true;
                 gamerule("advance_time", false);
-                Msg.broadcast("Фазы и счётчик дней поставлены на паузу (время мира остановлено).",
+                Msg.broadcast(Messages.raw("time.paused",
+                        "Фазы и счётчик дней поставлены на паузу (время мира остановлено)."),
                         NamedTextColor.GOLD);
                 saveState();
             }
@@ -1705,7 +1828,8 @@ public final class XmusyaHard extends JavaPlugin implements Listener {
                 phasesPaused = false;
                 gamerule("advance_time", true);
                 gamerule("advance_weather", true);
-                Msg.broadcast("Фазы и счётчик дней продолжаются.", NamedTextColor.GREEN);
+                Msg.broadcast(Messages.raw("time.resumed", "Фазы и счётчик дней продолжаются."),
+                        NamedTextColor.GREEN);
                 saveState();
             }
             case "bm" -> {
@@ -1715,19 +1839,23 @@ public final class XmusyaHard extends JavaPlugin implements Listener {
                         bmForced = true;
                         bmPaused = false;
                         startBloodMoon();
-                        Msg.broadcast("Кровавая луна запущена вручную.", NamedTextColor.GOLD);
+                        Msg.broadcast(Messages.raw("bloodmoon.start_manual",
+                                "Кровавая луна запущена вручную."), NamedTextColor.GOLD);
                     }
                     case "stop" -> {
                         stopBloodMoon();
-                        Msg.broadcast("Кровавая луна остановлена вручную.", NamedTextColor.GOLD);
+                        Msg.broadcast(Messages.raw("bloodmoon.stop_manual",
+                                "Кровавая луна остановлена вручную."), NamedTextColor.GOLD);
                     }
                     case "pause" -> {
                         bmPaused = true;
-                        Msg.broadcast("Кровавая луна на паузе (эффекты приостановлены).", NamedTextColor.GOLD);
+                        Msg.broadcast(Messages.raw("bloodmoon.pause",
+                                "Кровавая луна на паузе (эффекты приостановлены)."), NamedTextColor.GOLD);
                     }
                     case "resume" -> {
                         bmPaused = false;
-                        Msg.broadcast("Кровавая луна возобновлена.", NamedTextColor.GREEN);
+                        Msg.broadcast(Messages.raw("bloodmoon.resume", "Кровавая луна возобновлена."),
+                                NamedTextColor.GREEN);
                     }
                     default -> sendAdminHelp(sender);
                 }
@@ -1779,8 +1907,10 @@ public final class XmusyaHard extends JavaPlugin implements Listener {
             }
             case "reload" -> {
                 loadConfig();
+                Messages.load(this);
                 applyRules();
-                sender.sendMessage(Msg.prefix().append(Msg.c("Конфиг перечитан.", NamedTextColor.GREEN)));
+                sender.sendMessage(Msg.legacy(Messages.raw("command.reloaded",
+                        "&aconfig.yml и messages.yml перечитаны.")));
             }
             default -> sendAdminHelp(sender);
         }
@@ -1964,7 +2094,8 @@ public final class XmusyaHard extends JavaPlugin implements Listener {
         lastDaytime = 1000;
         applyRules();
         syncRecipesAll();
-        Msg.broadcast("Прогресс сброшен (день 0, фаза wood, барьер " + borderStart + ").",
+        Msg.broadcast(Messages.format("time.reset",
+                        "Прогресс сброшен (день 0, фаза wood, барьер {0}).", borderStart),
                 NamedTextColor.RED);
         saveState();
     }

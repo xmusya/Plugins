@@ -222,7 +222,8 @@ public final class DragonBeacon implements Listener {
         if (plugin.achievements != null) {
             plugin.achievements.onBeacon(e.getPlayer(), pyramidLevel(below), false, "");
         }
-        Msg.chat(e.getPlayer(), "Драконий маяк создан! ПКМ по яйцу — настройка эффектов.");
+        Msg.chat(e.getPlayer(), Messages.raw("beacon.created",
+                "Драконий маяк создан! ПКМ по яйцу — настройка эффектов."));
         e.getPlayer().playSound(e.getPlayer().getLocation(), "block.beacon.activate", 1f, 1f);
     }
 

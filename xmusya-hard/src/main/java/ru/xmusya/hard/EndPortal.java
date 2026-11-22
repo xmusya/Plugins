@@ -400,7 +400,8 @@ public final class EndPortal implements Listener {
                 }
             }
         }, 5L);
-        Msg.broadcast("Портал в Энд открыт!", NamedTextColor.LIGHT_PURPLE);
+        Msg.broadcast(Messages.raw("end.portal_open", "Портал в Энд открыт!"),
+                NamedTextColor.LIGHT_PURPLE);
         for (Player pl : Bukkit.getOnlinePlayers()) {
             pl.playSound(Msg.witherSpawn());
         }
@@ -540,8 +541,9 @@ public final class EndPortal implements Listener {
             refreshDisplays(f);
         }
         state.save();
-        Msg.broadcast("Портал в Энд погас! Сброшено рамок: " + count
-                + ". Соберите ресурсы заново.", NamedTextColor.DARK_PURPLE);
+        Msg.broadcast(Messages.format("end.portal_off",
+                "Портал в Энд погас! Сброшено рамок: {0}. Соберите ресурсы заново.", count),
+                NamedTextColor.DARK_PURPLE);
     }
 
     // ================================================================== защита
@@ -810,8 +812,9 @@ public final class EndPortal implements Listener {
             if (rnd.nextDouble() < cfg.normalBreakChance) {
                 int n = breakFrames(cfg.normalBreakFrames, "normal");
                 if (n > 0) {
-                    Msg.broadcast("Обычный слом: выбито рамок портала — " + n
-                            + ". Их нужно починить вручную!", NamedTextColor.DARK_RED);
+                    Msg.broadcast(Messages.format("end.break_normal",
+                            "Обычный слом: выбито рамок портала — {0}. Их нужно починить вручную!", n),
+                            NamedTextColor.DARK_RED);
                 }
             }
             state.save();
@@ -824,8 +827,9 @@ public final class EndPortal implements Listener {
             if (rnd.nextDouble() < cfg.ultraBreakChance) {
                 int n = breakFrames(cfg.ultraBreakFrames, "ultra");
                 if (n > 0) {
-                    Msg.broadcast("УЛЬТРА-СЛОМ: выбита рамка портала! Починка требует"
-                            + " очень редких ресурсов и головы моба.", NamedTextColor.DARK_RED);
+                    Msg.broadcast(Messages.raw("end.break_ultra",
+                            "УЛЬТРА-СЛОМ: выбита рамка портала! Починка требует"
+                            + " очень редких ресурсов и головы моба."), NamedTextColor.DARK_RED);
                 }
             }
             state.save();
