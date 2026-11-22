@@ -257,6 +257,14 @@ public final class Achievements implements Listener {
                 + (packOk ? " (датапак активен)" : ""));
     }
 
+    private static boolean sameContent(File a, File b) throws IOException {
+        if (a.length() != b.length()) {
+            return false;
+        }
+        return java.util.Arrays.equals(java.nio.file.Files.readAllBytes(a.toPath()),
+                java.nio.file.Files.readAllBytes(b.toPath()));
+    }
+
     private static void copy(InputStream in, File out) throws IOException {
         File tmp = new File(out.getParentFile(), out.getName() + ".tmp");
         try (OutputStream os = new FileOutputStream(tmp)) {
@@ -266,7 +274,7 @@ public final class Achievements implements Listener {
                 os.write(buf, 0, n);
             }
         }
-        if (out.isFile() && out.length() == tmp.length()) {
+        if (out.isFile() && sameContent(out, tmp)) {
             // содержимое не изменилось — не трогаем (иначе Paper перезагрузит пак)
             tmp.delete();
             return;

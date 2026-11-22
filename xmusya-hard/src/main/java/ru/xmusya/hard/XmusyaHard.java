@@ -20,6 +20,7 @@ import org.bukkit.entity.Entity;
 import org.bukkit.entity.EntityType;
 import org.bukkit.entity.Item;
 import org.bukkit.entity.LivingEntity;
+import org.bukkit.Raid;
 import org.bukkit.entity.Mob;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
@@ -80,6 +81,8 @@ public final class XmusyaHard extends JavaPlugin implements Listener {
     public int borderDaily = 100;
     public int borderMax = 100000;
     public int bmInterval = 10;
+    /** Первый день Кровавой луны (дальше — каждые bmInterval дней). */
+    public int bmStartDay = 30;
     /** Усиление мобов в Кровавую луну (amplifier; -1 = не выдавать). */
     public int bmMobStrength = 0;
     public int bmMobSpeed = 0;
@@ -99,6 +102,16 @@ public final class XmusyaHard extends JavaPlugin implements Listener {
     public int bmSpawnRadius = 24;
     /** Сколько мобов спавнится залпом сразу при старте КЛ. */
     public int bmBurstOnStart = 10;
+    /** Залп спавнится на дистанции burst-min..burst-max (не вплотную). */
+    public int bmBurstMinDistance = 16;
+    public int bmBurstMaxDistance = 32;
+
+    // --- рейды: иллюзионеры (ванильный « Illusioner » в рейдах)
+    public boolean raidIllusionerEnabled = true;
+    public int raidIllusionerFromWave = 2;
+    public double raidIllusionerChance = 0.35;
+    public int raidIllusionerMax = 2;
+    private final Map<Integer, List<UUID>> raidIllusioners = new HashMap<>();
     /** Анти-кемп (вексы/фантомы) действует и на игроков-исключений (шахта/высота). */
     public boolean bmExemptBlocksAntiCamp = false;
     /** Игроки, спрятанные в шахте/на высоте на момент старта КЛ. */
@@ -140,6 +153,10 @@ public final class XmusyaHard extends JavaPlugin implements Listener {
     private BossBar mainBar;
     private BossBar warnBar;
     private boolean warnVisible = false;
+    /** Сколько тиков осталось до скрытия warnBar (20 сек = 400 тиков). */
+    private int warnTicksLeft = 0;
+    /** День, в который уже показывали warnBar, чтобы не спамить заново при перезаходах. */
+    private int warnShownForDay = -1;
 
     // ------------------------------------------------------------------ включение
     @Override
@@ -279,6 +296,7 @@ public final class XmusyaHard extends JavaPlugin implements Listener {
         borderDaily = getConfig().getInt("border.daily", 100);
         borderMax = getConfig().getInt("border.max", 100000);
         bmInterval = getConfig().getInt("bloodmoon.interval", 10);
+        bmStartDay = Math.max(0, getConfig().getInt("bloodmoon.start-day", 30));
         bmMobStrength = getConfig().getInt("bloodmoon.mob-strength", 0);
         bmMobSpeed = getConfig().getInt("bloodmoon.mob-speed", 0);
         bmMineY = getConfig().getInt("bloodmoon.mine-y", 40);
@@ -289,7 +307,16 @@ public final class XmusyaHard extends JavaPlugin implements Listener {
         bmSpawnAttempts = Math.max(4, getConfig().getInt("bloodmoon.spawn-attempts", 16));
         bmSpawnRadius = Math.max(8, getConfig().getInt("bloodmoon.spawn-radius", 24));
         bmBurstOnStart = Math.max(0, getConfig().getInt("bloodmoon.burst-on-start", 10));
+        bmBurstMinDistance = Math.max(2, getConfig().getInt("bloodmoon.burst-min-distance", 16));
+        bmBurstMaxDistance = Math.max(bmBurstMinDistance + 1,
+                getConfig().getInt("bloodmoon.burst-max-distance", 32));
         bmExemptBlocksAntiCamp = getConfig().getBoolean("bloodmoon.exempt-blocks-anti-camp", false);
+
+        raidIllusionerEnabled = getConfig().getBoolean("raids.illusioner", true);
+        raidIllusionerFromWave = Math.max(1, getConfig().getInt("raids.illusioner-from-wave", 2));
+        raidIllusionerChance = Math.max(0.0, Math.min(1.0,
+                getConfig().getDouble("raids.illusioner-chance", 0.35)));
+        raidIllusionerMax = Math.max(1, getConfig().getInt("raids.illusioner-max", 2));
         starterBuffsUntilDay = getConfig().getInt("starter-buffs-until-day", 4);
         Msg.setPrefix(getConfig().getString("prefix", "&c[XMH] "));
 
@@ -959,14 +986,14 @@ public final class XmusyaHard extends JavaPlugin implements Listener {
                 if (y < bmMineY) {
                     // в глубине — вексы прямо рядом с игроком
                     for (int i = 0; i < 2; i++) {
-                        Location loc = findBmSpawn(p, true);
+                        Location loc = findBmSpawn(p, 3, 6);
                         if (loc != null) {
                             spawnBmMob(p, loc, EntityType.VEX);
                         }
                     }
                     // и обычная живность по пещере
                     for (int i = 0; i < 2; i++) {
-                        Location loc = findBmSpawn(p, false);
+                        Location loc = findBmSpawn(p, 10, Math.max(12, bmSpawnRadius));
                         if (loc != null) {
                             spawnBmMob(p, loc, pickBmType(currentDay >= bmEndgameDay));
                         }
@@ -1031,7 +1058,8 @@ public final class XmusyaHard extends JavaPlugin implements Listener {
         }
         int t = (int) (w.getTime() % 24000L);
         boolean nightWindow = t >= 13000 && t <= 23000;
-        boolean scheduled = !bmForced && currentDay > 0 && currentDay % bmInterval == 0 && nightWindow;
+        boolean scheduled = !bmForced && currentDay >= bmStartDay
+                && (currentDay - bmStartDay) % bmInterval == 0 && nightWindow;
 
         if (bmActive) {
             if (!bmForced && !nightWindow) {
@@ -1060,9 +1088,9 @@ public final class XmusyaHard extends JavaPlugin implements Listener {
                 bmExempt.add(p.getUniqueId());
             }
             p.playSound(Msg.witherSpawn());
-            // Залп при старте: сразу «растрел» вокруг игрока
+            // Залп при старте: «растрел» на дистанции, не вплотную
             for (int i = 0; i < bmBurstOnStart; i++) {
-                Location loc = findBmSpawn(p, i % 4 == 0);
+                Location loc = findBmSpawn(p, bmBurstMinDistance, bmBurstMaxDistance);
                 if (loc == null) {
                     continue;
                 }
@@ -1157,7 +1185,9 @@ public final class XmusyaHard extends JavaPlugin implements Listener {
         boolean endgame = currentDay >= bmEndgameDay;
         for (int n = 0; n < bmSpawnPerWave && hostiles < bmMaxHostiles; n++) {
             EntityType type = pickBmType(endgame);
-            Location loc = findBmSpawn(p, type == EntityType.VEX);
+            Location loc = type == EntityType.VEX
+                    ? findBmSpawn(p, 3, 6)
+                    : findBmSpawn(p, 10, Math.max(12, bmSpawnRadius));
             if (loc == null) {
                 continue;
             }
@@ -1214,11 +1244,9 @@ public final class XmusyaHard extends JavaPlugin implements Listener {
         };
     }
 
-    /** Ищет место рядом с игроком: для вексов — вплотную, для остальных — 10..radius. */
-    private Location findBmSpawn(Player p, boolean vex) {
+    /** Ищет свободное место в кольце [min..max] вокруг игрока. */
+    private Location findBmSpawn(Player p, int min, int max) {
         World w = p.getWorld();
-        int min = vex ? 3 : 10;
-        int max = Math.max(min + 2, vex ? 6 : bmSpawnRadius);
         for (int i = 0; i < bmSpawnAttempts; i++) {
             double angle = rnd.nextDouble() * Math.PI * 2.0;
             double dist = min + rnd.nextDouble() * (max - min);
@@ -1235,8 +1263,9 @@ public final class XmusyaHard extends JavaPlugin implements Listener {
             }
             return loc;
         }
-        // подстраховка: прямо рядом с игроком
-        Location near = p.getLocation().clone().add(rnd.nextInt(5) - 2, 1, rnd.nextInt(5) - 2);
+        // подстраховка: чуть дальше минимума
+        Location near = p.getLocation().clone().add(rnd.nextInt(5) - 2,
+                min + 1, rnd.nextInt(5) - 2);
         return near.getBlock().isEmpty() ? near : null;
     }
 
@@ -1367,8 +1396,7 @@ public final class XmusyaHard extends JavaPlugin implements Listener {
 
     private Component bmWarningName() {
         return Component.text("\u26a0 ", NamedTextColor.RED, TextDecoration.BOLD)
-                .append(Component.text("ВНИМАНИЕ: Завтра наступит Кровавая луна! "
-                        + "Подготовьтесь к обороне!", NamedTextColor.RED, TextDecoration.BOLD));
+                .append(Component.text("ВНИМАНИЕ: Завтра Кровавая луна! ", NamedTextColor.RED, TextDecoration.BOLD));
     }
 
     private void updateBossBars() {
@@ -1379,8 +1407,24 @@ public final class XmusyaHard extends JavaPlugin implements Listener {
         float progress = Math.min(1.0f, Math.max(0.0f, currentDay / (float) dayEndgame));
         mainBar.progress(progress);
 
-        boolean showWarn = !bmPaused && isWarningDay(currentDay);
+        boolean eligibleWarn = !bmPaused && isWarningDay(currentDay);
+        if (!eligibleWarn) {
+            warnTicksLeft = 0;
+            if (warnShownForDay != currentDay) {
+                warnShownForDay = -1;
+            }
+        } else if (warnShownForDay != currentDay) {
+            warnShownForDay = currentDay;
+            warnTicksLeft = 400; // 20 секунд (20 тиков * 20 сек)
+        } else if (warnTicksLeft > 0) {
+            warnTicksLeft = Math.max(0, warnTicksLeft - 10);
+        }
+
+        boolean showWarn = eligibleWarn && warnTicksLeft > 0;
         warnVisible = showWarn;
+        if (warnBar != null && showWarn) {
+            warnBar.progress(Math.min(1.0f, Math.max(0.0f, warnTicksLeft / 400.0f)));
+        }
 
         boolean showMain = currentDay < dayEndgame;
 
@@ -1400,7 +1444,12 @@ public final class XmusyaHard extends JavaPlugin implements Listener {
     }
 
     private boolean isWarningDay(int day) {
-        return day > 0 && (day + 1) % bmInterval == 0 && day % bmInterval != 0;
+        return isBloodMoonDay(day + 1);
+    }
+
+    /** Кровавая луна в этот день? */
+    public boolean isBloodMoonDay(int day) {
+        return bmInterval > 0 && day >= bmStartDay && (day - bmStartDay) % bmInterval == 0;
     }
 
     // ------------------------------------------------------------------ события
@@ -1902,6 +1951,8 @@ public final class XmusyaHard extends JavaPlugin implements Listener {
         bmActive = false;
         bmForced = false;
         bmPaused = false;
+        warnTicksLeft = 0;
+        warnShownForDay = -1;
         borderSize = borderStart;
         for (World w : Bukkit.getWorlds()) {
             w.setFullTime(1000L);
@@ -1923,7 +1974,10 @@ public final class XmusyaHard extends JavaPlugin implements Listener {
         if (bmInterval <= 0) {
             return 0;
         }
-        int rem = currentDay % bmInterval;
+        if (currentDay < bmStartDay) {
+            return bmStartDay - currentDay;
+        }
+        int rem = (currentDay - bmStartDay) % bmInterval;
         return rem == 0 ? 0 : bmInterval - rem;
     }
 

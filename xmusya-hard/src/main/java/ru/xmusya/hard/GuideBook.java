@@ -1,7 +1,6 @@
 package ru.xmusya.hard;
 
 import net.kyori.adventure.text.Component;
-import net.kyori.adventure.text.format.NamedTextColor;
 import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer;
 import org.bukkit.Material;
 import org.bukkit.NamespacedKey;
@@ -16,29 +15,34 @@ import org.bukkit.inventory.meta.BookMeta;
 import org.bukkit.persistence.PersistentDataType;
 
 import java.io.File;
-import java.io.IOException;
-import java.io.InputStream;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 
 /**
- * Книга-гайд (WRITTEN_BOOK). Выдаётся игроку один раз при первом входе.
+ * Книга-гайд (WRITTEN_BOOK).
  * Текст и оформление берутся из guide.yml (в корне папки plugins или в
  * папке плагина).
  */
 public final class GuideBook implements Listener {
 
+    private static final long COOLDOWN_MILLIS = 120_000L; // 2 минуты
+
     private final XmusyaHard plugin;
     private final LegacyComponentSerializer legacy = LegacyComponentSerializer.legacyAmpersand();
+    private final Map<UUID, Long> lastGiveTime = new HashMap<>();
 
     private boolean enabled = true;
     private String title = "&c[XMH] &6Гайд хардкора";
     private String author = "&7xmusya-hard";
     private String onceKey = "xmh_guide_book_given";
     private boolean dropIfFull = true;
+    /** Ширина строки в книге (в символах) — длинные строки переносим сами. */
+    private int pageWidth = 19;
+    /** Максимум строк на странице — лишнее разбиваем на новые страницы. */
+    private int pageLines = 13;
     private final List<String> pages = new ArrayList<>();
 
     public GuideBook(XmusyaHard plugin) {
@@ -86,6 +90,8 @@ public final class GuideBook implements Listener {
         author = y.getString("book.author", author);
         onceKey = y.getString("book.give-once-key", onceKey);
         dropIfFull = y.getBoolean("book.drop-if-inventory-full", true);
+        pageWidth = Math.max(10, y.getInt("book.page-width", pageWidth));
+        pageLines = Math.max(1, y.getInt("book.page-lines", pageLines));
         pages.clear();
         pages.addAll(y.getStringList("book.pages"));
         if (pages.isEmpty()) {
@@ -112,53 +118,64 @@ public final class GuideBook implements Listener {
         give(e.getPlayer());
     }
 
-    /** Выдаёт книгу, если игрок её ещё не получал. */
+    /** Проверяет, совпадает ли книга по названию и автору с текущей книгой-гайдом. */
+    private boolean isMatchingGuideBook(ItemStack stack, String expectedTitleSerialized, String expectedAuthorSerialized) {
+        if (stack == null || stack.getType() != Material.WRITTEN_BOOK || !stack.hasItemMeta()) {
+            return false;
+        }
+        if (!(stack.getItemMeta() instanceof BookMeta bm)) {
+            return false;
+        }
+        if (!bm.hasTitle() || !bm.hasAuthor()) {
+            return false;
+        }
+        String actualTitle = legacy.serialize(bm.title());
+        String actualAuthor = legacy.serialize(bm.author());
+        return expectedTitleSerialized.equals(actualTitle) && expectedAuthorSerialized.equals(actualAuthor);
+    }
+
+    /** Удаляет из инвентаря игрока все старые книги-гайды с текущим названием и автором. */
+    private void removeOldGuideBooks(Player p) {
+        String expectedTitle = legacy.serialize(legacy.deserialize(title));
+        String expectedAuthor = legacy.serialize(legacy.deserialize(author));
+        ItemStack[] contents = p.getInventory().getContents();
+        for (int i = 0; i < contents.length; i++) {
+            if (isMatchingGuideBook(contents[i], expectedTitle, expectedAuthor)) {
+                p.getInventory().setItem(i, null);
+            }
+        }
+    }
+
+    /** Выдаёт книгу с кулдауном в 2 минуты, удаляя старые книги по совпадению названия и автора. */
     public boolean give(Player p) {
         if (!enabled) {
             return false;
         }
-        try {
-            if (p.getPersistentDataContainer().has(key(), PersistentDataType.BYTE)) {
+        long now = System.currentTimeMillis();
+        Long prev = lastGiveTime.get(p.getUniqueId());
+        if (prev != null) {
+            long elapsed = now - prev;
+            if (elapsed < COOLDOWN_MILLIS) {
+                long leftSec = (COOLDOWN_MILLIS - elapsed + 999L) / 1000L;
+                Msg.chat(p, "Подождите ещё " + leftSec + " сек. перед повторным получением книги-гайда.");
                 return false;
             }
-        } catch (RuntimeException ignored) {
         }
+
         ItemStack book = build();
         if (book == null) {
             return false;
         }
-        // Взамен старой книги (если игрок таскает её с собой) — book and quill.
-        // Метаданные страниц из неё переносятся, чтобы текст не терялся.
-        for (ItemStack cur : p.getInventory().getContents()) {
-            if (cur == null) {
-                continue;
-            }
-            if (cur.getType() == Material.WRITTEN_BOOK
-                    && cur.hasItemMeta()
-                    && cur.getItemMeta() instanceof BookMeta bm
-                    && legacy.serialize(bm.title()).equals(legacy.serialize(
-                            legacy.deserialize(title)))) {
-                ItemStack quill = replaceWithQuill(cur, bm);
-                if (quill != null) {
-                    p.getInventory().remove(cur);
-                    Map<Integer, ItemStack> rest = p.getInventory().addItem(quill);
-                    if (!rest.isEmpty()) {
-                        for (ItemStack r : rest.values()) {
-                            p.getWorld().dropItemNaturally(p.getLocation(), r);
-                        }
-                    }
-                    Msg.chat(p, "Старая книга-гайд заменена на «Книгу и перо»"
-                            + " (можно редактировать).", NamedTextColor.GRAY);
-                    break;
-                }
-            }
-        }
+
+        removeOldGuideBooks(p);
+
         Map<Integer, ItemStack> left = p.getInventory().addItem(book);
         if (!left.isEmpty() && dropIfFull) {
             for (ItemStack rest : left.values()) {
                 p.getWorld().dropItemNaturally(p.getLocation(), rest);
             }
         }
+        lastGiveTime.put(p.getUniqueId(), now);
         try {
             p.getPersistentDataContainer().set(key(), PersistentDataType.BYTE, (byte) 1);
         } catch (RuntimeException ignored) {
@@ -178,35 +195,128 @@ public final class GuideBook implements Listener {
         }
         meta.title(legacy.deserialize(title));
         meta.author(legacy.deserialize(author));
-        List<Component> comps = new ArrayList<>(pages.size());
-        for (String page : pages) {
-            comps.add(legacy.deserialize(page));
+        List<Component> comps = new ArrayList<>();
+        for (String chunk : paginateRaw(pages, pageWidth, pageLines)) {
+            comps.add(legacy.deserialize(chunk));
         }
         meta.pages(comps);
         item.setItemMeta(meta);
         return item;
     }
 
-    /** Превращает нередактируемую книгу-гайд в «Книгу и перо» с теми же страницами. */
-    private static ItemStack replaceWithQuill(ItemStack old, BookMeta oldMeta) {
-        ItemStack quill = new ItemStack(Material.WRITABLE_BOOK, 1);
-        BookMeta qm = (BookMeta) quill.getItemMeta();
-        if (qm == null) {
-            return null;
+    /**
+     * Разбивает страницы guide.yml на реальные страницы книги:
+     * переносит строки длиннее pageWidth и режет по pageLines строк.
+     * Цветовые коды (&a-f, &l, &r) учитываются при переносе.
+     */
+    static List<String> paginateRaw(List<String> pages, int pageWidth, int pageLines) {
+        List<String> result = new ArrayList<>();
+        for (String page : pages) {
+            List<String> lines = new ArrayList<>();
+            for (String raw : page.split("\n", -1)) {
+                wrapLine(raw, pageWidth, lines);
+            }
+            while (!lines.isEmpty() && lines.get(lines.size() - 1).isEmpty()) {
+                lines.remove(lines.size() - 1);
+            }
+            if (lines.isEmpty()) {
+                continue;
+            }
+            // Если текст не влезает — делим страницу на РАВНЫЕ части, а не
+            // «13 строк + одна сирота».
+            int chunks = (lines.size() + pageLines - 1) / pageLines;
+            int per = (lines.size() + chunks - 1) / chunks;
+            for (int i = 0; i < lines.size(); i += per) {
+                result.add(String.join("\n",
+                        lines.subList(i, Math.min(i + per, lines.size()))));
+            }
         }
-        qm.title(oldMeta.hasTitle() ? oldMeta.title() : null);
-        qm.author(oldMeta.hasAuthor() ? oldMeta.author() : null);
-        List<net.kyori.adventure.text.Component> pages = oldMeta.pages();
-        if (!pages.isEmpty()) {
-            qm.pages(pages);
+        if (result.isEmpty()) {
+            result.add("");
         }
-        quill.setItemMeta(qm);
-        return quill;
+        return result;
     }
 
-    /** Для консольной команды /xmh guide <ник> (перечитать и выдать заново). */
+    /**
+     * Переносит одну строку по словам. Стиль (&2, &l ...) запоминается и
+     * повторяется в начале новой строки, поэтому цвет не теряется.
+     */
+    private static void wrapLine(String line, int width, List<String> out) {
+        if (line.isEmpty()) {
+            out.add("");
+            return;
+        }
+        StringBuilder plain = new StringBuilder();
+        List<Integer> src = new ArrayList<>();
+        List<String> styleAt = new ArrayList<>();
+        String style = "";
+        for (int i = 0; i < line.length(); i++) {
+            char c = line.charAt(i);
+            if (c == '&' && i + 1 < line.length()) {
+                style = applyCode(style, Character.toLowerCase(line.charAt(i + 1)));
+                i++;
+                continue;
+            }
+            plain.append(c);
+            src.add(i);
+            styleAt.add(style);
+        }
+        int len = plain.length();
+        int start = 0;
+        while (len - start > width) {
+            int limit = start + width;
+            int cut = -1;
+            for (int k = limit; k > start; k--) {
+                if (plain.charAt(k) == ' ') {
+                    cut = k;
+                    break;
+                }
+            }
+            int end = cut > start ? cut : limit;
+            int next = cut > start ? cut + 1 : limit;
+            String part = line.substring(src.get(start),
+                    end < len ? src.get(end) : line.length());
+            out.add((styleAt.get(start) + part).replaceAll("[ ]+$", ""));
+            start = next;
+        }
+        if (start < len) {
+            out.add(styleAt.get(start) + line.substring(src.get(start)));
+        } else {
+            out.add("");
+        }
+    }
+
+    /** Пересчитывает текущий стиль после кода цвета/форматирования. */
+    private static String applyCode(String style, char code) {
+        if (code == 'r') {
+            return "";
+        }
+        if ((code >= '0' && code <= '9') || (code >= 'a' && code <= 'f')) {
+            return "&" + code; // цвет сбрасывает форматирование
+        }
+        if (code >= 'k' && code <= 'o') {
+            String add = "&" + code;
+            return style.contains(add) ? style : style + add;
+        }
+        return style;
+    }
+
+    private static int displayWidth(String s) {
+        int w = 0;
+        for (int i = 0; i < s.length(); i++) {
+            if (s.charAt(i) == '&' && i + 1 < s.length()) {
+                i++;
+                continue;
+            }
+            w++;
+        }
+        return w;
+    }
+
+    /** Для команды /xmh guide [ник] (перечитать и выдать заново без ожидания кулдауна). */
     public void reloadAndGive(Player p) {
         load();
+        lastGiveTime.remove(p.getUniqueId());
         try {
             p.getPersistentDataContainer().remove(key());
         } catch (RuntimeException ignored) {
