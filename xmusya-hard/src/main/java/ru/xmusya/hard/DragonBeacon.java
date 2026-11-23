@@ -127,7 +127,9 @@ public final class DragonBeacon implements Listener {
     }
 
     /** Слоты под эффекты: 3 + 5 + 3 (всего 11 эффектов). */
-    private static final int[] SLOTS = {10, 11, 12, 19, 20, 21, 22, 23, 28, 29, 30};
+    // Инвентарь 27 слотов (0..26) — слот 28 и 29 были вне диапазона
+    // и вызывали ArrayIndexOutOfBoundsException при открытии GUI.
+    private static final int[] SLOTS = {10, 11, 12, 13, 19, 20, 21, 22, 23, 24, 25};
 
     private final XmusyaHard plugin;
     private final Map<String, Beacon> beacons = new LinkedHashMap<>();
