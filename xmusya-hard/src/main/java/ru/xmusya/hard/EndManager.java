@@ -574,7 +574,9 @@ public final class EndManager implements Listener {
             chance = Math.min(1.0, cfg.pearlChance + step * Math.min(3, looting));
         }
         if (rnd.nextDouble() < chance) {
-            e.getDrops().add(new ItemStack(Material.ENDER_PEARL, 1));
+            // 1..2 жемчуга (ваниль: 0..1 с Looting, максимум 2)
+            int pearls = 1 + rnd.nextInt(2);
+            e.getDrops().add(new ItemStack(Material.ENDER_PEARL, pearls));
         }
     }
 
@@ -657,24 +659,60 @@ public final class EndManager implements Listener {
                 }
                 Entity g = w.spawnEntity(sp, EntityType.GHAST);
                 g.addScoreboardTag("xh_scaled");
-                w.strikeLightningEffect(sp);
+                // Вспышка только если гаст реально в воздухе (не в стене)
+                if (sp.getBlockY() + 4 < w.getMaxHeight()) {
+                    w.strikeLightningEffect(sp);
+                }
             }
         }
     }
 
+    /**
+     * Ищем свободную пещеру для гаста. Гаст — большой (4 блока в высоту),
+     * поэтому проверяем не 2, а 5 блоков по Y и 3x3 по горизонтали,
+     * чтобы он не спавнился в стене.
+     */
     private Location findAirNear(World w, Location center, double radius) {
-        for (int i = 0; i < 20; i++) {
+        int maxY = w.getMaxHeight() - 6;
+        for (int i = 0; i < 40; i++) {
             double a = rnd.nextDouble() * Math.PI * 2;
-            double d = 6 + rnd.nextDouble() * radius;
+            double d = 8 + rnd.nextDouble() * radius;
             int x = center.getBlockX() + (int) Math.round(Math.cos(a) * d);
             int z = center.getBlockZ() + (int) Math.round(Math.sin(a) * d);
-            int y = Math.min(w.getMaxHeight() - 4, center.getBlockY() + 8 + rnd.nextInt(14));
+            int y = Math.min(maxY, center.getBlockY() + 8 + rnd.nextInt(14));
             Location l = new Location(w, x + 0.5, y, z + 0.5);
-            if (l.getBlock().isEmpty() && l.clone().add(0, 1, 0).getBlock().isEmpty()) {
+            if (airEnough(w, x, y, z)) {
+                return l;
+            }
+        }
+        // Не нашли пещеру — спавним выше спавнера, но тоже в воздухе
+        for (int i = 0; i < 40; i++) {
+            int y = Math.min(maxY, center.getBlockY() + 10 + rnd.nextInt(20));
+            Location l = new Location(w, center.getBlockX() + 0.5, y,
+                    center.getBlockZ() + 0.5);
+            if (airEnough(w, l.getBlockX(), y, l.getBlockZ())) {
                 return l;
             }
         }
         return null;
+    }
+
+    /** Гаст: 3x3 по X/Z и 5 блоков по Y должны быть свободны. */
+    private static boolean airEnough(World w, int x, int y, int z) {
+        for (int dy = 0; dy < 5; dy++) {
+            int yy = y + dy;
+            if (yy >= w.getMaxHeight()) {
+                return false;
+            }
+            for (int dx = -1; dx <= 1; dx++) {
+                for (int dz = -1; dz <= 1; dz++) {
+                    if (!w.getBlockAt(x + dx, yy, z + dz).isEmpty()) {
+                        return false;
+                    }
+                }
+            }
+        }
+        return true;
     }
 
     @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)

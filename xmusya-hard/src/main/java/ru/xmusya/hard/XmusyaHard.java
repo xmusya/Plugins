@@ -21,11 +21,16 @@ import org.bukkit.entity.EntityType;
 import org.bukkit.entity.Item;
 import org.bukkit.entity.LivingEntity;
 import org.bukkit.Raid;
+import org.bukkit.entity.Enemy;
 import org.bukkit.entity.Mob;
 import org.bukkit.entity.Player;
+import org.bukkit.entity.PigZombie;
+import org.bukkit.entity.Slime;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
+import org.bukkit.event.entity.EntityDamageByEntityEvent;
+import org.bukkit.event.entity.EntityDeathEvent;
 import org.bukkit.event.entity.EntitySpawnEvent;
 import org.bukkit.event.entity.PlayerDeathEvent;
 import org.bukkit.event.inventory.InventoryOpenEvent;
@@ -108,6 +113,16 @@ public final class XmusyaHard extends JavaPlugin implements Listener {
     /** Залп спавнится на дистанции burst-min..burst-max (не вплотную). */
     public int bmBurstMinDistance = 16;
     public int bmBurstMaxDistance = 32;
+
+    // --- Кровавая луна: новые мобы по дням
+    /** Мобы по дням: 70 свинозомби, 80 поборники/разбойники,
+     *  100 ведьмы/зимогоры/бogged/слизни, 110 магмакубы. */
+    public int bmZombiePiglinDay = 70;
+    public int bmIllagerDay = 80;
+    public int bmWitchDay = 100;
+    public int bmMagmacubeDay = 110;
+    /** Список мобов КЛ на текущую ночь (собирается в refreshBmTypes). */
+    private final List<EntityType> bmTypes = new ArrayList<>();
 
     // --- рейды: иллюзионеры (ванильный « Illusioner » в рейдах)
     public boolean raidIllusionerEnabled = true;
@@ -335,6 +350,10 @@ public final class XmusyaHard extends JavaPlugin implements Listener {
         bmBurstMinDistance = Math.max(2, getConfig().getInt("bloodmoon.burst-min-distance", 16));
         bmBurstMaxDistance = Math.max(bmBurstMinDistance + 1,
                 getConfig().getInt("bloodmoon.burst-max-distance", 32));
+        bmZombiePiglinDay = getConfig().getInt("bloodmoon.zombie-piglin-day", 70);
+        bmIllagerDay = getConfig().getInt("bloodmoon.illager-day", 80);
+        bmWitchDay = getConfig().getInt("bloodmoon.witch-day", 100);
+        bmMagmacubeDay = getConfig().getInt("bloodmoon.magmacube-day", 110);
         bmExemptBlocksAntiCamp = getConfig().getBoolean("bloodmoon.exempt-blocks-anti-camp", false);
 
         raidIllusionerEnabled = getConfig().getBoolean("raids.illusioner", true);
@@ -1030,7 +1049,7 @@ public final class XmusyaHard extends JavaPlugin implements Listener {
                     for (int i = 0; i < 2; i++) {
                         Location loc = findBmSpawn(p, 10, Math.max(12, bmSpawnRadius));
                         if (loc != null) {
-                            spawnBmMob(p, loc, pickBmType(currentDay >= bmEndgameDay));
+                            spawnBmMob(p, loc, pickBmType(false));
                         }
                     }
                 } else {
@@ -1124,12 +1143,13 @@ public final class XmusyaHard extends JavaPlugin implements Listener {
             }
             p.playSound(Msg.witherSpawn());
             // Залп при старте: «растрел» на дистанции, не вплотную
+            refreshBmTypes();
             for (int i = 0; i < bmBurstOnStart; i++) {
                 Location loc = findBmSpawn(p, bmBurstMinDistance, bmBurstMaxDistance);
                 if (loc == null) {
                     continue;
                 }
-                spawnBmMob(p, loc, pickBmType(currentDay >= bmEndgameDay));
+                spawnBmMob(p, loc, pickBmType(false));
             }
         }
         Msg.broadcastRaw(Msg.legacy(Messages.raw("bloodmoon.header", "&4[КРОВАВАЯ ЛУНА] "),
@@ -1222,9 +1242,9 @@ public final class XmusyaHard extends JavaPlugin implements Listener {
         if (hostiles >= bmMaxHostiles) {
             return;
         }
-        boolean endgame = currentDay >= bmEndgameDay;
+        refreshBmTypes();
         for (int n = 0; n < bmSpawnPerWave && hostiles < bmMaxHostiles; n++) {
-            EntityType type = pickBmType(endgame);
+            EntityType type = pickBmType(false);
             Location loc = type == EntityType.VEX
                     ? findBmSpawn(p, 3, 6)
                     : findBmSpawn(p, 10, Math.max(12, bmSpawnRadius));
@@ -1234,6 +1254,47 @@ public final class XmusyaHard extends JavaPlugin implements Listener {
             spawnBmMob(p, loc, type);
             hostiles++;
         }
+    }
+
+    /** Свинозомби КЛ: если игрок ударил одного — вся толпа рядом агрится. */
+    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+    public void onBmPigZombieHit(EntityDamageByEntityEvent e) {
+        if (!bmActive) {
+            return;
+        }
+        if (!(e.getDamager() instanceof Player player)) {
+            return;
+        }
+        if (!(e.getEntity() instanceof PigZombie hit)) {
+            return;
+        }
+        if (!hit.getScoreboardTags().contains("xh_bm_spawned")) {
+            return;
+        }
+        for (Entity en : hit.getWorld().getNearbyEntities(hit.getLocation(), 12, 12, 12)) {
+            if (en instanceof PigZombie pz
+                    && pz.getScoreboardTags().contains("xh_bm_spawned")) {
+                pz.setAngry(true);
+                pz.setAnger(400);
+                ((Mob) pz).setTarget(player);
+            }
+        }
+    }
+
+    /** Из поборников КЛ не падают изумруды (слишком много на Кровавой луне). */
+    @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
+    public void onBmVindicatorDeath(EntityDeathEvent e) {
+        if (!bmActive) {
+            return;
+        }
+        if (e.getEntityType() != EntityType.VINDICATOR) {
+            return;
+        }
+        if (!e.getEntity().getScoreboardTags().contains("xh_bm_spawned")) {
+            return;
+        }
+        e.getDrops().removeIf(st -> st != null
+                && st.getType() == Material.EMERALD);
     }
 
     /** Фантомы/вексы КЛ должны видеть цель — иначе они просто летают рядом. */
@@ -1266,22 +1327,44 @@ public final class XmusyaHard extends JavaPlugin implements Listener {
         return n;
     }
 
-    private EntityType pickBmType(boolean endgame) {
-        if (!endgame) {
-            return switch (rnd.nextInt(3)) {
-                case 0 -> EntityType.ZOMBIE;
-                case 1 -> EntityType.SKELETON;
-                default -> EntityType.SPIDER;
-            };
+    /** Мобы КЛ по текущему дню: база + новые с 70/80/100/110 дней. */
+    private void refreshBmTypes() {
+        bmTypes.clear();
+        bmTypes.add(EntityType.ZOMBIE);
+        bmTypes.add(EntityType.SKELETON);
+        bmTypes.add(EntityType.SPIDER);
+        if (currentDay >= bmEndgameDay) {
+            bmTypes.add(EntityType.DROWNED);
+            bmTypes.add(EntityType.WITHER_SKELETON);
+            bmTypes.add(EntityType.VEX);
         }
-        return switch (rnd.nextInt(6)) {
-            case 0 -> EntityType.ZOMBIE;
-            case 1 -> EntityType.SKELETON;
-            case 2 -> EntityType.DROWNED;
-            case 3 -> EntityType.WITHER_SKELETON;
-            case 4 -> EntityType.VEX;
-            default -> EntityType.SPIDER;
-        };
+        if (currentDay >= bmZombiePiglinDay) {
+            // Свинозомби: «побольше, не дофига» — два раза в пуле
+            bmTypes.add(EntityType.ZOMBIFIED_PIGLIN);
+            bmTypes.add(EntityType.ZOMBIFIED_PIGLIN);
+        }
+        if (currentDay >= bmIllagerDay) {
+            bmTypes.add(EntityType.VINDICATOR);
+            bmTypes.add(EntityType.PILLAGER);
+        }
+        if (currentDay >= bmWitchDay) {
+            bmTypes.add(EntityType.WITCH);
+            bmTypes.add(EntityType.STRAY);
+            bmTypes.add(EntityType.BOGGED);
+            bmTypes.add(EntityType.SLIME);
+        }
+        if (currentDay >= bmMagmacubeDay) {
+            bmTypes.add(EntityType.MAGMA_CUBE);
+            bmTypes.add(EntityType.MAGMA_CUBE);
+        }
+    }
+
+    /** М baseType КЛ по текущему дню. */
+    private EntityType pickBmType(boolean endgame) {
+        if (bmTypes.isEmpty()) {
+            return EntityType.ZOMBIE;
+        }
+        return bmTypes.get(rnd.nextInt(bmTypes.size()));
     }
 
     /** Ищет свободное место в кольце [min..max] вокруг игрока. */
@@ -1321,6 +1404,17 @@ public final class XmusyaHard extends JavaPlugin implements Listener {
         if (type == EntityType.WITHER_SKELETON && bmWitherKey != null) {
             spawned.getPersistentDataContainer().set(bmWitherKey,
                     org.bukkit.persistence.PersistentDataType.BYTE, (byte) 1);
+        }
+        // Слизни и магмакубы — только мелкие (1), чтобы игрок не «задыхался»
+        if (type == EntityType.SLIME && spawned instanceof Slime slime) {
+            slime.setSize(1);
+        } else if (type == EntityType.MAGMA_CUBE && spawned instanceof Slime slime) {
+            slime.setSize(1);
+        }
+        if (spawned instanceof PigZombie pz) {
+            // Свинозомби: вся толпа агрится, если задеть одного
+            pz.setAngry(true);
+            pz.setAnger(400);
         }
         if (spawned instanceof Mob mob) {
             mob.setRemoveWhenFarAway(false);
