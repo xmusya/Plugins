@@ -131,7 +131,11 @@ public final class Phases {
     public static final List<String> HOSTILE_TYPES = List.of(
             "minecraft:zombie", "minecraft:skeleton", "minecraft:stray", "minecraft:husk",
             "minecraft:spider", "minecraft:cave_spider", "minecraft:creeper",
-            "minecraft:piglin", "minecraft:wither_skeleton", "minecraft:drowned");
+            "minecraft:piglin", "minecraft:wither_skeleton", "minecraft:drowned",
+            // мобы Кровавой луны с 70/80/100/110 дней
+            "minecraft:zombified_piglin", "minecraft:vindicator", "minecraft:pillager",
+            "minecraft:witch", "minecraft:bogged", "minecraft:slime",
+            "minecraft:magma_cube");
 
     public static int indexOfKey(String key) {
         for (int i = 0; i < KEYS.length; i++) {
