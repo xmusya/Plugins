@@ -118,8 +118,11 @@ public final class XmusyaHard extends JavaPlugin implements Listener {
     /** Сколько волн рейда уже видели (ключ — сам рейд). */
     private final Map<Raid, Integer> raidWaves = new HashMap<>();
     // --- криперы: облако эффектов при взрыве
-    /** Оставлять облако эффектов крипера (ваниль 26.3). */
-    public boolean creeperCloud = true;
+    /**
+     * Запретить облако эффектов при взрыве крипера (ваниль 26.3).
+     * По умолчанию ВЫКЛЮЧЕНО: облако не должно появляться.
+     */
+    public boolean creeperCloudOff = false;
     /** Предел длительности эффекта из облака, сек (0 — как в ванили). */
     public int creeperCloudMaxSeconds = 0;
 
@@ -340,9 +343,7 @@ public final class XmusyaHard extends JavaPlugin implements Listener {
                 getConfig().getDouble("raids.illusioner-chance", 0.35)));
         raidIllusionerMax = Math.max(1, getConfig().getInt("raids.illusioner-max", 2));
 
-        creeperCloud = getConfig().getBoolean("creepers.effect-cloud", true);
-        creeperCloudMaxSeconds = Math.max(0,
-                getConfig().getInt("creepers.max-effect-seconds", 0));
+        creeperCloudOff = getConfig().getBoolean("creepers.no-effect-cloud", false);
         starterBuffsUntilDay = getConfig().getInt("starter-buffs-until-day", 4);
         Msg.setPrefix(getConfig().getString("prefix", "&c[XMH] "));
 
@@ -1418,65 +1419,31 @@ public final class XmusyaHard extends JavaPlugin implements Listener {
 
     // ------------------------------------------------------------------ криперы
     /**
-     * Взрыв крипера оставляет облако его эффектов — ванильная механика 26.3.
-     * Плагин подстраховывает её: у мобов с постоянными баффами (Кровавая луна,
-     * поздние дни) облако должно появиться и отдать игроку эти эффекты.
-     * Если ванильное облако уже создано — ничего не делаем (без дублей).
+     * Ваниль 26.3: крипер с эффектами при взрыве оставляет облако (AreaEffectCloud).
+     * Здесь оно отменяется — по умолчанию облака не должно быть.
      */
-    @EventHandler(priority = EventPriority.MONITOR)
-    public void onCreeperExplode(org.bukkit.event.entity.EntityExplodeEvent e) {
-        if (!creeperCloud) {
+    @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
+    public void onCreeperCloudSpawn(EntitySpawnEvent e) {
+        if (!creeperCloudOff) {
             return;
         }
-        if (!(e.getEntity() instanceof org.bukkit.entity.Creeper creeper)) {
+        if (!(e.getEntity() instanceof org.bukkit.entity.AreaEffectCloud cloud)) {
             return;
         }
-        List<PotionEffect> effects = new ArrayList<>(creeper.getActivePotionEffects());
-        if (effects.isEmpty()) {
-            return;
-        }
-        Location loc = e.getLocation() != null ? e.getLocation().clone() : creeper.getLocation();
-        if (loc.getWorld() == null) {
-            return;
-        }
-        if (hasEffectCloudNear(loc)) {
-            return; // ваниль уже оставила облако
-        }
-        // Проверяем ещё раз через тик — ваниль может создать облако чуть позже.
-        Bukkit.getScheduler().runTask(this, () -> {
-            if (loc.getWorld() == null || hasEffectCloudNear(loc)) {
-                return;
-            }
-            spawnCreeperCloud(loc, effects);
-        });
-    }
-
-    private boolean hasEffectCloudNear(Location loc) {
-        for (Entity en : loc.getWorld().getNearbyEntities(loc, 4, 4, 4)) {
-            if (en instanceof org.bukkit.entity.AreaEffectCloud) {
-                return true;
+        // Облако именно от взрыва крипера: рядом есть крипер.
+        boolean creeperNearby = false;
+        for (Entity en : cloud.getWorld().getNearbyEntities(
+                cloud.getLocation(), 3, 3, 3)) {
+            if (en instanceof org.bukkit.entity.Creeper) {
+                creeperNearby = true;
+                break;
             }
         }
-        return false;
-    }
-
-    private void spawnCreeperCloud(Location loc, List<PotionEffect> effects) {
-        org.bukkit.entity.AreaEffectCloud cloud = loc.getWorld().spawn(loc,
-                org.bukkit.entity.AreaEffectCloud.class);
-        cloud.setRadius(2.5f);
-        cloud.setRadiusOnUse(-0.5f);
-        cloud.setWaitTime(10);
-        cloud.setDuration(300);
-        cloud.setRadiusPerTick(-2.5f / 300f);
-        for (PotionEffect pe : effects) {
-            int duration = pe.getDuration();
-            if (creeperCloudMaxSeconds > 0
-                    && (duration < 0 || duration > creeperCloudMaxSeconds * 20)) {
-                duration = creeperCloudMaxSeconds * 20;
-            }
-            cloud.addCustomEffect(new PotionEffect(pe.getType(), duration, pe.getAmplifier(),
-                    pe.isAmbient(), pe.hasParticles(), pe.hasIcon()), true);
+        if (!creeperNearby) {
+            return; // облако не от крипера (зелье и т.п.) — не трогаем
         }
+        e.setCancelled(true);
+        cloud.remove();
     }
 
     /** Точка спавна рядом с центром рейда (чтобы иллюзионер шёл в общей волне). */
