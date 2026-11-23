@@ -28,6 +28,8 @@ public final class EndState {
         public String world = "world";
         public int x, y, z;
         public String itemId = "";
+        /** Альтернативы через запятую: подойдёт любой из этих предметов. */
+        public String itemAny = "";
         public String itemName = "";
         public int amount = 1;
         public boolean filled = false;
@@ -125,6 +127,7 @@ public final class EndState {
                 f.y = s.getInt("y");
                 f.z = s.getInt("z");
                 f.itemId = s.getString("item", "");
+                f.itemAny = s.getString("any", "");
                 f.itemName = s.getString("name", "");
                 f.amount = s.getInt("amount", 1);
                 f.filled = s.getBoolean("filled", false);
@@ -228,6 +231,7 @@ public final class EndState {
             y.set(p + "y", f.y);
             y.set(p + "z", f.z);
             y.set(p + "item", f.itemId);
+            y.set(p + "any", f.itemAny);
             y.set(p + "name", f.itemName);
             y.set(p + "amount", f.amount);
             y.set(p + "filled", f.filled);

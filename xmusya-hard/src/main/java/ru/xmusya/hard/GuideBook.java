@@ -39,10 +39,14 @@ public final class GuideBook implements Listener {
     private String author = "&7xmusya-hard";
     private String onceKey = "xmh_guide_book_given";
     private boolean dropIfFull = true;
-    /** Ширина строки в книге (в символах) — длинные строки переносим сами. */
+    /** Выдавать книгу автоматически при входе (по умолчанию ВЫКЛ). */
+    private boolean giveOnJoin = false;
+    /** Ширина строки в пикселях (ванильная книга: TEXT_WIDTH = 114). */
+    private int pageWidthPx = 112;
+    /** Запасной вариант: ширина в символах (если page-width-px <= 0). */
     private int pageWidth = 19;
-    /** Максимум строк на странице — лишнее разбиваем на новые страницы. */
-    private int pageLines = 13;
+    /** Максимум строк на странице: 128 px / 9 px = 14 строк (ваниль). */
+    private int pageLines = 14;
     private final List<String> pages = new ArrayList<>();
 
     public GuideBook(XmusyaHard plugin) {
@@ -90,6 +94,8 @@ public final class GuideBook implements Listener {
         author = y.getString("book.author", author);
         onceKey = y.getString("book.give-once-key", onceKey);
         dropIfFull = y.getBoolean("book.drop-if-inventory-full", true);
+        giveOnJoin = y.getBoolean("book.give-on-join", false);
+        pageWidthPx = y.getInt("book.page-width-px", pageWidthPx);
         pageWidth = Math.max(10, y.getInt("book.page-width", pageWidth));
         pageLines = Math.max(1, y.getInt("book.page-lines", pageLines));
         pages.clear();
@@ -103,7 +109,9 @@ public final class GuideBook implements Listener {
             }
         }
         plugin.getLogger().info("Книга-гайд: " + (enabled ? "включена" : "выключена")
-                + ", страниц " + pages.size() + " (" + f.getName() + ").");
+                + ", страниц " + pages.size() + " (" + f.getName() + ")"
+                + (enabled && !giveOnJoin ? ", выдача при входе ВЫКЛЮЧЕНА" : "")
+                + ".");
     }
 
     private NamespacedKey key() {
@@ -112,8 +120,8 @@ public final class GuideBook implements Listener {
 
     @EventHandler(priority = EventPriority.MONITOR)
     public void onJoin(PlayerJoinEvent e) {
-        if (!enabled || plugin.isBot(e.getPlayer())) {
-            return;
+        if (!enabled || !giveOnJoin || plugin.isBot(e.getPlayer())) {
+            return; // книга не выдаётся автоматически — только по /xmh guide
         }
         give(e.getPlayer());
     }
@@ -198,7 +206,7 @@ public final class GuideBook implements Listener {
         meta.title(legacy.deserialize(title));
         meta.author(legacy.deserialize(author));
         List<Component> comps = new ArrayList<>();
-        for (String chunk : paginateRaw(pages, pageWidth, pageLines)) {
+        for (String chunk : paginateRaw(pages, pageWidthPx, pageWidth, pageLines)) {
             comps.add(legacy.deserialize(chunk));
         }
         meta.pages(comps);
@@ -207,16 +215,17 @@ public final class GuideBook implements Listener {
     }
 
     /**
-     * Разбивает страницы guide.yml на реальные страницы книги:
-     * переносит строки длиннее pageWidth и режет по pageLines строк.
-     * Цветовые коды (&a-f, &l, &r) учитываются при переносе.
+     * Разбивает страницы guide.yml на реальные страницы книги.
+     * Строки переносятся по ШИРИНЕ В ПИКСЕЛЯХ (как в ванили: 114 px, 14 строк),
+     * поэтому страница заполняется полностью и текст не обрезается.
      */
-    static List<String> paginateRaw(List<String> pages, int pageWidth, int pageLines) {
+    static List<String> paginateRaw(List<String> pages, int widthPx, int widthChars,
+                                    int pageLines) {
         List<String> result = new ArrayList<>();
         for (String page : pages) {
             List<String> lines = new ArrayList<>();
             for (String raw : page.split("\n", -1)) {
-                wrapLine(raw, pageWidth, lines);
+                wrapLine(raw, widthPx, widthChars, lines);
             }
             while (!lines.isEmpty() && lines.get(lines.size() - 1).isEmpty()) {
                 lines.remove(lines.size() - 1);
@@ -224,13 +233,11 @@ public final class GuideBook implements Listener {
             if (lines.isEmpty()) {
                 continue;
             }
-            // Если текст не влезает — делим страницу на РАВНЫЕ части, а не
-            // «13 строк + одна сирота».
-            int chunks = (lines.size() + pageLines - 1) / pageLines;
-            int per = (lines.size() + chunks - 1) / chunks;
-            for (int i = 0; i < lines.size(); i += per) {
+            // Заполняем страницы подряд, без «равных частей»: иначе половина
+            // страницы оставалась пустой.
+            for (int i = 0; i < lines.size(); i += pageLines) {
                 result.add(String.join("\n",
-                        lines.subList(i, Math.min(i + per, lines.size()))));
+                        lines.subList(i, Math.min(i + pageLines, lines.size()))));
             }
         }
         if (result.isEmpty()) {
@@ -240,10 +247,12 @@ public final class GuideBook implements Listener {
     }
 
     /**
-     * Переносит одну строку по словам. Стиль (&2, &l ...) запоминается и
+     * Переносит одну строку по словам. Ширина считается в пикселях по таблице
+     * ванильного шрифта (ascii.png + nonlatin_european.png), жирный текст
+     * учитывается (+1 px на символ). Стиль (&2, &l ...) запоминается и
      * повторяется в начале новой строки, поэтому цвет не теряется.
      */
-    private static void wrapLine(String line, int width, List<String> out) {
+    private static void wrapLine(String line, int widthPx, int widthChars, List<String> out) {
         if (line.isEmpty()) {
             out.add("");
             return;
@@ -264,28 +273,82 @@ public final class GuideBook implements Listener {
             styleAt.add(style);
         }
         int len = plain.length();
-        int start = 0;
-        while (len - start > width) {
-            int limit = start + width;
-            int cut = -1;
-            for (int k = limit; k > start; k--) {
-                if (plain.charAt(k) == ' ') {
-                    cut = k;
+        if (len == 0) {
+            out.add(style);
+            return;
+        }
+        int startChar = 0;
+        while (startChar < len) {
+            int width = 0;
+            int lastSpace = -1;
+            int k = startChar;
+            while (k < len) {
+                char c = plain.charAt(k);
+                boolean bold = styleAt.get(k).indexOf('l') >= 0;
+                int cw = glyphWidth(c) + (bold ? 1 : 0);
+                boolean fits = widthPx > 0
+                        ? width + cw <= widthPx
+                        : (k - startChar) < widthChars;
+                if (!fits && k > startChar) {
                     break;
                 }
+                width += cw;
+                if (c == ' ') {
+                    lastSpace = k;
+                }
+                k++;
             }
-            int end = cut > start ? cut : limit;
-            int next = cut > start ? cut + 1 : limit;
-            String part = line.substring(src.get(start),
+            int end = k;
+            if (k < len && lastSpace > startChar) {
+                end = lastSpace;
+            }
+            if (end <= startChar) {
+                end = startChar + 1;
+            }
+            String part = line.substring(src.get(startChar),
                     end < len ? src.get(end) : line.length());
-            out.add((styleAt.get(start) + part).replaceAll("[ ]+$", ""));
-            start = next;
+            out.add((styleAt.get(startChar) + part).replaceAll("[ ]+$", ""));
+            int next = end;
+            while (next < len && plain.charAt(next) == ' ') {
+                next++;
+            }
+            if (next <= startChar) {
+                next = startChar + 1;
+            }
+            startChar = next;
         }
-        if (start < len) {
-            out.add(styleAt.get(start) + line.substring(src.get(start)));
-        } else {
-            out.add("");
+    }
+
+    // Ширина глифа в пикселях (уже с межбуквенным интервалом +1) —
+    // снято с ванильных текстур шрифта 26.3. Для прочих символов — 7.
+    private static final int[] ASCII_W = {
+ 0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
+ 0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
+ 4,  2,  4,  6,  6,  6,  6,  2,  4,  4,  4,  6,  2,  6,  2,  6,
+ 6,  6,  6,  6,  6,  6,  6,  6,  6,  6,  2,  2,  5,  6,  5,  6,
+ 7,  6,  6,  6,  6,  6,  6,  6,  6,  4,  6,  6,  6,  6,  6,  6,
+ 6,  6,  6,  6,  6,  6,  6,  6,  6,  6,  6,  4,  6,  4,  6,  6,
+ 3,  6,  6,  6,  6,  6,  5,  6,  6,  2,  6,  5,  3,  6,  6,  6,
+ 6,  6,  6,  6,  4,  6,  6,  6,  6,  6,  6,  4,  2,  4,  7,  1
+    };
+
+    private static final int[] CYR_W = {
+ 7,  7,  8,  7,  6,  6,  4,  7,  6,  8,  7,  7,  7,  7,  7,  7,
+ 6,  6,  6,  6,  7,  6,  8,  6,  6,  7,  6,  6,  6,  6,  6,  6,
+ 6,  6,  6,  6,  8,  6,  7,  6,  8,  9,  7,  8,  6,  6,  8,  6,
+ 6,  6,  6,  5,  7,  6,  6,  6,  6,  7,  5,  6,  6,  6,  6,  6,
+ 6,  6,  6,  6,  6,  6,  6,  6,  6,  7,  7,  7,  6,  6,  8,  6,
+ 7,  7,  7,  7,  6,  6,  2,  7,  6,  8,  7,  7,  7,  7,  7,  7
+    };
+
+    private static int glyphWidth(char c) {
+        if (c >= 32 && c < 127) {
+            return ASCII_W[c];
         }
+        if (c >= 0x400 && c <= 0x45F) {
+            return CYR_W[c - 0x400];
+        }
+        return 7;
     }
 
     /** Пересчитывает текущий стиль после кода цвета/форматирования. */

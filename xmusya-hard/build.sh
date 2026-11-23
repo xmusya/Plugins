@@ -26,7 +26,7 @@ for jar in "$LIBS"/*.jar; do
 done
 
 OUT="build/classes"
-JAR="BuiltPlugins/xmusya-hard-1.1.14.jar"
+JAR="BuiltPlugins/xmusya-hard-1.1.15.jar"
 
 rm -rf "$OUT"
 mkdir -p "$OUT" BuiltPlugins

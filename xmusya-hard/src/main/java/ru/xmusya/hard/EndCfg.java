@@ -19,6 +19,18 @@ public final class EndCfg {
         public String name = "Предмет";
         public int amount = 1;
         public int maxPerPortal = 1;
+        /** Альтернативы: подойдёт любой из этих предметов (пусто — только material). */
+        public final List<Material> anyOf = new ArrayList<>();
+
+        /** Все материалы, любой из которых подойдёт. */
+        public List<Material> materials() {
+            return anyOf.isEmpty() ? List.of(material) : anyOf;
+        }
+
+        /** Материал, которым рисуется иконка. */
+        public Material icon() {
+            return materials().get(0);
+        }
     }
 
     /** Вариант головы для ультра-набора (weight — относительный шанс). */
@@ -247,6 +259,7 @@ public final class EndCfg {
         if (e.pool.isEmpty()) {
             defaultPool(e);
         }
+        migrateStars(e.pool);
 
         loadList(e.normalRepair, s.getMapList("repair.normal.items"));
         if (e.normalRepair.isEmpty()) {
@@ -256,6 +269,7 @@ public final class EndCfg {
         if (e.ultraRepair.isEmpty()) {
             defaultUltraRepair(e);
         }
+        migrateStars(e.ultraRepair);
         for (java.util.Map<?, ?> raw : s.getMapList("repair.ultra.heads")) {
             Object mat = raw.get("material");
             if (mat == null) {
@@ -317,7 +331,29 @@ public final class EndCfg {
             pi.name = raw.get("name") == null ? prettify(m) : String.valueOf(raw.get("name"));
             Object amt = raw.get("amount");
             pi.amount = amt instanceof Number n ? Math.max(1, n.intValue()) : 1;
+            readAnyOf(pi, raw.get("any-of"));
             out.add(pi);
+        }
+    }
+
+    /** Список альтернатив (any-of: [id, id, ...]). Первый материал также включается. */
+    private static void readAnyOf(PoolItem pi, Object raw) {
+        if (!(raw instanceof List<?> list) || list.isEmpty()) {
+            return;
+        }
+        for (Object o : list) {
+            Material m = Material.matchMaterial(String.valueOf(o));
+            if (m == null) {
+                org.bukkit.Bukkit.getLogger().warning(
+                        "[xmusya-hard] any-of: неизвестный материал " + o);
+                continue;
+            }
+            if (!pi.anyOf.contains(m)) {
+                pi.anyOf.add(m);
+            }
+        }
+        if (!pi.anyOf.contains(pi.material)) {
+            pi.anyOf.add(0, pi.material);
         }
     }
 
@@ -340,6 +376,7 @@ public final class EndCfg {
             pi.amount = amt instanceof Number n ? n.intValue() : 1;
             Object mx = raw.get("max-per-portal");
             pi.maxPerPortal = mx instanceof Number n ? n.intValue() : 1;
+            readAnyOf(pi, raw.get("any-of"));
             e.pool.add(pi);
         }
     }
@@ -362,7 +399,10 @@ public final class EndCfg {
         add(e, Material.CRYING_OBSIDIAN, "Плачущий обсидиан", 6, 2);
         add(e, Material.ANCIENT_DEBRIS, "Древние обломки", 2, 1);
         add(e, Material.NETHERITE_INGOT, "Незеритовый слиток", 1, 1);
-        add(e, Material.NETHER_STAR, "Звезда Незера", 1, 1);
+        // Вместо звезды Незера (убивать визера каждые 50 дней — слишком тяжело)
+        // нужна любая голова: её выбивает взрыв заряженного крипера (ваниль).
+        addAny(e, "Голова моба", 1, 1, Material.SKELETON_SKULL,
+                Material.WITHER_SKELETON_SKULL, Material.CREEPER_HEAD);
         add(e, Material.GOLD_BLOCK, "Блок золота", 2, 1);
     }
 
@@ -379,7 +419,9 @@ public final class EndCfg {
         e.ultraRepair.clear();
         addTo(e.ultraRepair, Material.NETHERITE_BLOCK, "Блок незерита", 1);
         addTo(e.ultraRepair, Material.HEAVY_CORE, "Тяжёлое ядро", 1);
-        addTo(e.ultraRepair, Material.NETHER_STAR, "Звезда Незера", 1);
+        // Вместо звезды Незера — любая голова (см. комментарий у пула предметов).
+        addToAny(e.ultraRepair, "Голова моба", 1, Material.SKELETON_SKULL,
+                Material.WITHER_SKELETON_SKULL, Material.CREEPER_HEAD);
         addTo(e.ultraRepair, Material.ENCHANTED_GOLDEN_APPLE, "Зачарованное золотое яблоко", 2);
         addTo(e.ultraRepair, Material.TOTEM_OF_UNDYING, "Тотем бессмертия", 1);
         addTo(e.ultraRepair, Material.CONDUIT, "Кондуит", 1);
@@ -420,11 +462,50 @@ public final class EndCfg {
         return b;
     }
 
+    /**
+     * Старые config.yml могли требовать звезду Незера. Убивать визера
+     * каждые 50 дней слишком тяжело — заменяем на любую голову
+     * (её выбивает взрыв заряженного крипера, ванильная механика).
+     */
+    private static void migrateStars(List<PoolItem> list) {
+        for (PoolItem pi : list) {
+            if (pi.material != Material.NETHER_STAR || !pi.anyOf.isEmpty()) {
+                continue;
+            }
+            pi.material = Material.SKELETON_SKULL;
+            pi.name = "Голова моба";
+            pi.anyOf.add(Material.SKELETON_SKULL);
+            pi.anyOf.add(Material.WITHER_SKELETON_SKULL);
+            pi.anyOf.add(Material.CREEPER_HEAD);
+        }
+    }
+
     private static void addTo(List<PoolItem> out, Material m, String name, int amount) {
         PoolItem pi = new PoolItem();
         pi.material = m;
         pi.name = name;
         pi.amount = amount;
+        out.add(pi);
+    }
+
+    /** Пул: предмет, вместо которого подойдёт любая из голов. */
+    private static void addAny(EndCfg e, String name, int amount, int max, Material... any) {
+        PoolItem pi = new PoolItem();
+        pi.material = any[0];
+        pi.name = name;
+        pi.amount = amount;
+        pi.maxPerPortal = max;
+        pi.anyOf.addAll(java.util.List.of(any));
+        e.pool.add(pi);
+    }
+
+    /** Починка: набор из списка, вместо него — любая из голов. */
+    private static void addToAny(List<PoolItem> out, String name, int amount, Material... any) {
+        PoolItem pi = new PoolItem();
+        pi.material = any[0];
+        pi.name = name;
+        pi.amount = amount;
+        pi.anyOf.addAll(java.util.List.of(any));
         out.add(pi);
     }
 

@@ -74,6 +74,16 @@ bloodmoon:
   exempt-blocks-anti-camp: false
 
 # Рейды на деревни.
+# --- криперы ---------------------------------------------------------------
+# Взрыв крипера оставляет облако его эффектов (ваниль 26.3). Плагин только
+# подстраховывает ванильное облако: у мобов с постоянными баффами (Кровавая
+# луна, поздние дни) игрок получает эти эффекты, войдя в облако.
+creepers:
+  effect-cloud: true
+  # Максимальная длительность эффекта, который даёт облако, в секундах.
+  # 0 — как в ванили (постоянный бафф моба переносится как постоянный).
+  max-effect-seconds: 0
+
 raids:
   # Добавлять в рейды иллюзионеров (ванильный «Illusioner», в Java сам не спавнится).
   illusioner: true
@@ -435,7 +445,10 @@ end:
       - { material: minecraft:crying_obsidian, name: "Плачущий обсидиан", amount: 6, max-per-portal: 2 }
       - { material: minecraft:ancient_debris, name: "Древние обломки",   amount: 2,  max-per-portal: 1 }
       - { material: minecraft:netherite_ingot, name: "Незеритовый слиток", amount: 1, max-per-portal: 1 }
-      - { material: minecraft:nether_star,    name: "Звезда Незера",     amount: 1,  max-per-portal: 1 }
+      # Вместо звезды Незера — любая голова: её выбивает взрыв заряженного
+      # крипера (ванильная механика), убивать визера каждые 50 дней не нужно.
+      - { material: minecraft:skeleton_skull, name: "Голова моба", amount: 1, max-per-portal: 1,
+          any-of: [minecraft:skeleton_skull, minecraft:wither_skeleton_skull, minecraft:creeper_head] }
       - { material: minecraft:gold_block,     name: "Блок золота",       amount: 2,  max-per-portal: 1 }
 
   # Автоматические ивенты слома рамок портала.
@@ -474,7 +487,9 @@ end:
       items:
         - { material: minecraft:netherite_block,       name: "Блок незерита",             amount: 1 }
         - { material: minecraft:heavy_core,            name: "Тяжёлое ядро",              amount: 1 }
-        - { material: minecraft:nether_star,           name: "Звезда Незера",             amount: 1 }
+        # Вместо звезды Незера — любая голова (см. комментарий у portal.items).
+        - { material: minecraft:skeleton_skull, name: "Голова моба", amount: 1,
+            any-of: [minecraft:skeleton_skull, minecraft:wither_skeleton_skull, minecraft:creeper_head] }
         - { material: minecraft:enchanted_golden_apple, name: "Зачарованное золотое яблоко", amount: 2 }
         - { material: minecraft:totem_of_undying,      name: "Тотем бессмертия",          amount: 1 }
         - { material: minecraft:conduit,               name: "Кондуит",                   amount: 1 }

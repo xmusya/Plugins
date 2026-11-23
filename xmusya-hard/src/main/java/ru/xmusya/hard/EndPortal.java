@@ -147,6 +147,7 @@ public final class EndPortal implements Listener {
             String bk = b.getWorld().getName() + ":" + b.getX() + ":" + b.getY() + ":" + b.getZ();
             EndState.Frame keep = old.get(bk);
             if (keep != null) {
+                migrateStar(keep);
                 state.frames.put(bk, keep);
                 phases.putIfAbsent(bk, rnd.nextFloat() * 6.283f);
                 continue;
@@ -172,6 +173,7 @@ public final class EndPortal implements Listener {
                 }
                 used.merge(pick.material, 1, Integer::sum);
                 f.itemId = pick.material.name();
+                f.itemAny = joinAny(pick);
                 f.itemName = pick.name;
                 f.amount = Math.max(1, pick.amount);
             }
@@ -308,35 +310,80 @@ public final class EndPortal implements Listener {
         state.save();
     }
 
+    /** Альтернативы для рамки: itemAny (если задан) иначе itemId. */
+    private List<Material> frameMaterials(EndState.Frame f) {
+        List<Material> list = new ArrayList<>();
+        if (f.itemAny != null && !f.itemAny.isBlank()) {
+            for (String part : f.itemAny.split(",")) {
+                Material m = Material.matchMaterial(part.trim());
+                if (m != null && !list.contains(m)) {
+                    list.add(m);
+                }
+            }
+        }
+        if (list.isEmpty()) {
+            Material m = Material.matchMaterial(f.itemId);
+            if (m != null) {
+                list.add(m);
+            }
+        }
+        return list;
+    }
+
+    /** Старые сохранения могли требовать звезду Незера — заменяем на голову. */
+    private static void migrateStar(EndState.Frame f) {
+        if (f == null) {
+            return;
+        }
+        boolean star = "NETHER_STAR".equals(f.itemId);
+        if (star) {
+            f.itemId = Material.SKELETON_SKULL.name();
+            f.itemAny = Material.SKELETON_SKULL.name() + ","
+                    + Material.WITHER_SKELETON_SKULL.name() + ","
+                    + Material.CREEPER_HEAD.name();
+            f.itemName = "Голова моба";
+        }
+    }
+
+    private static String joinAny(EndCfg.PoolItem pick) {
+        if (pick.anyOf.size() <= 1) {
+            return "";
+        }
+        StringBuilder sb = new StringBuilder();
+        for (Material m : pick.anyOf) {
+            if (sb.length() > 0) {
+                sb.append(',');
+            }
+            sb.append(m.name());
+        }
+        return sb.toString();
+    }
+
+    private int countAny(Player p, List<Material> mats) {
+        int n = 0;
+        for (Material m : mats) {
+            n += countInInventory(p, m);
+        }
+        return n;
+    }
+
     private boolean hasResources(Player p, EndState.Frame f) {
-        return countInInventory(p, Material.matchMaterial(f.itemId)) >= f.amount;
+        return countAny(p, frameMaterials(f)) >= f.amount;
     }
 
     private String missingText(Player p, EndState.Frame f) {
-        Material m = Material.matchMaterial(f.itemId);
-        int have = m == null ? 0 : countInInventory(p, m);
+        int have = countAny(p, frameMaterials(f));
         return "Нужно: " + f.itemName + " x" + f.amount
                 + " (у вас " + have + "/" + f.amount + ")";
     }
 
     private void takeResources(Player p, EndState.Frame f) {
-        Material m = Material.matchMaterial(f.itemId);
-        if (m == null) {
-            return;
-        }
-        int left = f.amount;
-        ItemStack[] contents = p.getInventory().getContents();
-        for (int i = 0; i < contents.length && left > 0; i++) {
-            ItemStack st = contents[i];
-            if (st == null || st.getType() != m) {
-                continue;
+        for (Material m : frameMaterials(f)) {
+            int have = countInInventory(p, m);
+            if (have > 0) {
+                int take = Math.min(have, f.amount);
+                takeMaterial(p, m, take);
             }
-            int take = Math.min(left, st.getAmount());
-            st.setAmount(st.getAmount() - take);
-            if (st.getAmount() <= 0) {
-                p.getInventory().setItem(i, null);
-            }
-            left -= take;
         }
     }
 
@@ -698,9 +745,10 @@ public final class EndPortal implements Listener {
 
         UUID itemId = null;
         if (!f.filled) {
+            List<Material> mats = frameMaterials(f);
             Material m = f.broken
                     ? brokenIcon(f)
-                    : Material.matchMaterial(f.itemId);
+                    : (mats.isEmpty() ? null : mats.get(0));
             if (m != null) {
                 Location il = base.clone().add(0.5, 1.2, 0.5);
                 ItemDisplay item = w.spawn(il, ItemDisplay.class, d -> {
@@ -845,6 +893,7 @@ public final class EndPortal implements Listener {
         }
         EndCfg.PoolItem pick = cfg.pool.get(rnd.nextInt(cfg.pool.size()));
         f.itemId = pick.material.name();
+        f.itemAny = joinAny(pick);
         f.itemName = pick.name;
         f.amount = Math.max(1, pick.amount);
     }
@@ -929,7 +978,7 @@ public final class EndPortal implements Listener {
 
     private boolean hasKit(Player p, List<EndCfg.PoolItem> kit) {
         for (EndCfg.PoolItem it : kit) {
-            if (countInInventory(p, it.material) < it.amount) {
+            if (countAny(p, it.materials()) < it.amount) {
                 return false;
             }
         }
@@ -938,7 +987,7 @@ public final class EndPortal implements Listener {
 
     private String missingKitText(Player p, List<EndCfg.PoolItem> kit) {
         for (EndCfg.PoolItem it : kit) {
-            int have = countInInventory(p, it.material);
+            int have = countAny(p, it.materials());
             if (have < it.amount) {
                 return "Для починки нужно: " + it.name + " x" + it.amount
                         + " (у вас " + have + "/" + it.amount + ")";
@@ -949,7 +998,19 @@ public final class EndPortal implements Listener {
 
     private void takeKit(Player p, List<EndCfg.PoolItem> kit) {
         for (EndCfg.PoolItem it : kit) {
-            takeMaterial(p, it.material, it.amount);
+            int left = it.amount;
+            for (Material m : it.materials()) {
+                int have = countInInventory(p, m);
+                if (have <= 0) {
+                    continue;
+                }
+                int take = Math.min(have, left);
+                takeMaterial(p, m, take);
+                left -= take;
+                if (left <= 0) {
+                    break;
+                }
+            }
         }
     }
 

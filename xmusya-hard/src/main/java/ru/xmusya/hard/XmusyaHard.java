@@ -117,6 +117,12 @@ public final class XmusyaHard extends JavaPlugin implements Listener {
     private final Map<Raid, List<UUID>> raidIllusioners = new HashMap<>();
     /** Сколько волн рейда уже видели (ключ — сам рейд). */
     private final Map<Raid, Integer> raidWaves = new HashMap<>();
+    // --- криперы: облако эффектов при взрыве
+    /** Оставлять облако эффектов крипера (ваниль 26.3). */
+    public boolean creeperCloud = true;
+    /** Предел длительности эффекта из облака, сек (0 — как в ванили). */
+    public int creeperCloudMaxSeconds = 0;
+
     /** Анти-кемп (вексы/фантомы) действует и на игроков-исключений (шахта/высота). */
     public boolean bmExemptBlocksAntiCamp = false;
     /** Игроки, спрятанные в шахте/на высоте на момент старта КЛ. */
@@ -333,6 +339,10 @@ public final class XmusyaHard extends JavaPlugin implements Listener {
         raidIllusionerChance = Math.max(0.0, Math.min(1.0,
                 getConfig().getDouble("raids.illusioner-chance", 0.35)));
         raidIllusionerMax = Math.max(1, getConfig().getInt("raids.illusioner-max", 2));
+
+        creeperCloud = getConfig().getBoolean("creepers.effect-cloud", true);
+        creeperCloudMaxSeconds = Math.max(0,
+                getConfig().getInt("creepers.max-effect-seconds", 0));
         starterBuffsUntilDay = getConfig().getInt("starter-buffs-until-day", 4);
         Msg.setPrefix(getConfig().getString("prefix", "&c[XMH] "));
 
@@ -1372,16 +1382,14 @@ public final class XmusyaHard extends JavaPlugin implements Listener {
         if (spawned.size() >= raidIllusionerMax || wave < raidIllusionerFromWave) {
             return;
         }
-        // Первый иллюзионер — гарантированно, дальше с шансом
+        // Первый иллюзионер — гарантированно, дальше с шансом.
+        // Спавним его прямо в волну рейда (рядом с ванильными разбойниками),
+        // без сообщений — как будто он был в рейде с самого начала.
         if (!spawned.isEmpty() && rnd.nextDouble() > raidIllusionerChance) {
             return;
         }
-        Location center = e.getPatrolLeader() != null
-                ? e.getPatrolLeader().getLocation() : raid.getLocation();
-        if (center == null || center.getWorld() == null) {
-            return;
-        }
-        Location loc = findRaidSpawn(center);
+        Location loc = raidSpawnLocation(e.getPatrolLeader() != null
+                ? e.getPatrolLeader().getLocation() : raid.getLocation());
         if (loc == null) {
             return;
         }
@@ -1406,24 +1414,88 @@ public final class XmusyaHard extends JavaPlugin implements Listener {
             }
         }
         spawned.add(ent.getUniqueId());
-        Msg.broadcast(Messages.raw("raid.illusioner", "В рейде появился иллюзионер!"),
-                NamedTextColor.DARK_PURPLE);
     }
 
-    private Location findRaidSpawn(Location center) {
-        World w = center.getWorld();
+    // ------------------------------------------------------------------ криперы
+    /**
+     * Взрыв крипера оставляет облако его эффектов — ванильная механика 26.3.
+     * Плагин подстраховывает её: у мобов с постоянными баффами (Кровавая луна,
+     * поздние дни) облако должно появиться и отдать игроку эти эффекты.
+     * Если ванильное облако уже создано — ничего не делаем (без дублей).
+     */
+    @EventHandler(priority = EventPriority.MONITOR)
+    public void onCreeperExplode(org.bukkit.event.entity.EntityExplodeEvent e) {
+        if (!creeperCloud) {
+            return;
+        }
+        if (!(e.getEntity() instanceof org.bukkit.entity.Creeper creeper)) {
+            return;
+        }
+        List<PotionEffect> effects = new ArrayList<>(creeper.getActivePotionEffects());
+        if (effects.isEmpty()) {
+            return;
+        }
+        Location loc = e.getLocation() != null ? e.getLocation().clone() : creeper.getLocation();
+        if (loc.getWorld() == null) {
+            return;
+        }
+        if (hasEffectCloudNear(loc)) {
+            return; // ваниль уже оставила облако
+        }
+        // Проверяем ещё раз через тик — ваниль может создать облако чуть позже.
+        Bukkit.getScheduler().runTask(this, () -> {
+            if (loc.getWorld() == null || hasEffectCloudNear(loc)) {
+                return;
+            }
+            spawnCreeperCloud(loc, effects);
+        });
+    }
+
+    private boolean hasEffectCloudNear(Location loc) {
+        for (Entity en : loc.getWorld().getNearbyEntities(loc, 4, 4, 4)) {
+            if (en instanceof org.bukkit.entity.AreaEffectCloud) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private void spawnCreeperCloud(Location loc, List<PotionEffect> effects) {
+        org.bukkit.entity.AreaEffectCloud cloud = loc.getWorld().spawn(loc,
+                org.bukkit.entity.AreaEffectCloud.class);
+        cloud.setRadius(2.5f);
+        cloud.setRadiusOnUse(-0.5f);
+        cloud.setWaitTime(10);
+        cloud.setDuration(300);
+        cloud.setRadiusPerTick(-2.5f / 300f);
+        for (PotionEffect pe : effects) {
+            int duration = pe.getDuration();
+            if (creeperCloudMaxSeconds > 0
+                    && (duration < 0 || duration > creeperCloudMaxSeconds * 20)) {
+                duration = creeperCloudMaxSeconds * 20;
+            }
+            cloud.addCustomEffect(new PotionEffect(pe.getType(), duration, pe.getAmplifier(),
+                    pe.isAmbient(), pe.hasParticles(), pe.hasIcon()), true);
+        }
+    }
+
+    /** Точка спавна рядом с центром рейда (чтобы иллюзионер шёл в общей волне). */
+    private Location raidSpawnLocation(Location center) {
+        if (center == null || center.getWorld() == null) {
+            return null;
+        }
         for (int i = 0; i < 20; i++) {
             double angle = rnd.nextDouble() * Math.PI * 2.0;
-            double dist = 4 + rnd.nextDouble() * 8;
+            double dist = 2 + rnd.nextDouble() * 5;
             int x = center.getBlockX() + (int) Math.round(Math.cos(angle) * dist);
             int z = center.getBlockZ() + (int) Math.round(Math.sin(angle) * dist);
-            int y = w.getHighestBlockYAt(x, z) + 1;
-            Location loc = new Location(w, x + 0.5, y, z + 0.5);
+            int y = center.getWorld().getHighestBlockYAt(x, z) + 1;
+            Location loc = new Location(center.getWorld(), x + 0.5, y, z + 0.5);
             if (loc.getBlock().isEmpty() && loc.clone().add(0, 1, 0).getBlock().isEmpty()) {
                 return loc;
             }
         }
-        return null;
+        return center;
     }
 
     @EventHandler(priority = EventPriority.MONITOR)
