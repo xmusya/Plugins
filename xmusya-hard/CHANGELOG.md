@@ -3,7 +3,7 @@
 Все notable-изменения плагина **xmusya-hard**.
 Формат: [Keep a Changelog](https://keepachangelog.com/ru/1.1.0/), версии — [SemVer](https://semver.org/lang/ru/).
 
-## [1.1.15] — 2026-11-23
+## [15.1] — 2026-11-23
 
 ### Changed
 - **Звезда Незера заменена на голову моба** в пуле предметов портала
