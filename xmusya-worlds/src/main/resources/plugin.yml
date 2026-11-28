@@ -1,0 +1,19 @@
+name: xmusya-worlds
+version: 1.0.7
+main: ru.xmusya.worlds.XmusyaWorlds
+api-version: '1.21'
+description: Multi-world hub with portals, shared End and per-world position memory
+author: xmusya
+website: https://github.com/xmusya
+commands:
+  worlds:
+    description: xmusya-worlds admin and info commands
+    usage: /worlds reload | list | tp <world> [player] | spawn <world> | setspawn <world>
+    aliases: [world, xw]
+  hub:
+    description: Return to the hub world
+    usage: /hub
+permissions:
+  xmusyaworlds.admin:
+    description: Admin panel of xmusya-worlds
+    default: op

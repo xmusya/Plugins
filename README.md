@@ -8,6 +8,7 @@
 | Плагин | Версия | Что делает | Jar |
 |---|---|---|---|
 | [xmusya-hard](xmusya-hard/) | 1.1.14 | Хардкор с прогрессией по игровым дням: фазы, барьер, запреты, Кровавая луна | [xmusya-hard-1.1.14.jar](xmusya-hard/BuiltPlugins/xmusya-hard-1.1.14.jar) |
+| [xmusya-worlds](xmusya-worlds/) | 1.0.7 | Мультимировой хаб: порталы-области, общий Энд, память позиций, cave/islands (вдохновлено Pepeland) | [xmusya-worlds-1.0.7.jar](xmusya-worlds/BuiltPlugins/xmusya-worlds-1.0.7.jar) |
 
 ## Установка любого плагина
 

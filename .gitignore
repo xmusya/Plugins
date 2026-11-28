@@ -12,3 +12,6 @@ Docs/
 AGENTS.md
 /BuiltPlugins/
 prompthard.txt
+
+# локальный тестовый мир
+world/
