@@ -74,6 +74,8 @@ public final class XmusyaWorlds extends JavaPlugin implements Listener {
     private boolean voidLevitation = true;
     /** Вместо левитации — телепорт на спавн мира. */
     private boolean voidTeleport = true;
+    /** Эффект пустоты только в хабе (а не во всех мирах). */
+    private boolean voidOnlyHub = true;
     private int voidLevitationAmp = 4;       // V
     private int voidLevitationTicks = 200;   // 10 сек
     private double voidMinY = -64;           // ниже этого Y — пустота
@@ -233,6 +235,7 @@ public final class XmusyaWorlds extends JavaPlugin implements Listener {
         respawnInDeathWorld = c.getBoolean("respawn.in-death-world", true);
         voidLevitation = c.getBoolean("void.levitation.enabled", true);
         voidTeleport = c.getBoolean("void.teleport-to-spawn", true);
+        voidOnlyHub = c.getBoolean("void.only-hub", true);
         voidLevitationAmp = c.getInt("void.levitation.amplifier", 4);
         voidLevitationTicks = Math.max(0, c.getInt("void.levitation.duration-ticks", 200));
         voidMinY = c.getDouble("void.levitation.min-y", -64);
@@ -799,7 +802,9 @@ public final class XmusyaWorlds extends JavaPlugin implements Listener {
     private void startVoidTask() {
         if (!voidLevitation) return;
         Bukkit.getScheduler().runTaskTimer(this, () -> {
+            World hub = voidOnlyHub ? worldOf(worldKeyToFolder.get(defaultWorld)) : null;
             for (Player p : Bukkit.getOnlinePlayers()) {
+                if (voidOnlyHub && !p.getWorld().equals(hub)) continue;
                 if (p.getLocation().getY() < voidMinY) {
                     p.addPotionEffect(new PotionEffect(PotionEffectType.LEVITATION,
                             voidLevitationTicks, voidLevitationAmp, false, false, false));

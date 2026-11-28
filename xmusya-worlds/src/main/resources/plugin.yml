@@ -1,5 +1,5 @@
 name: xmusya-worlds
-version: 1.0.7
+version: 1.0.8
 main: ru.xmusya.worlds.XmusyaWorlds
 api-version: '1.21'
 description: Multi-world hub with portals, shared End and per-world position memory
